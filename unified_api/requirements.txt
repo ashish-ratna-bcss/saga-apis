@@ -1,0 +1,52 @@
+# Unified API — merged dependency set for Bluweb + OSINT + reddit_server + telegram_poc.
+# Core web-stack packages pinned to Bluweb's versions (the newest of the four;
+# verified to satisfy the other three's open lower-bound ranges — see
+# docs/SINGLE_SERVER_DEPLOYMENT_PLAN.md and the milestone-1 plan for the check).
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
+pydantic-settings==2.15.0
+sqlalchemy[asyncio]==2.0.52
+httpx==0.28.1
+alembic==1.19.2
+pypdf==6.18.0
+
+# --- Bluweb-only ---
+asyncpg==0.31.0
+dnspython==2.8.0
+selectolax==0.4.11
+trafilatura==2.2.0
+feedparser==6.0.14
+playwright==1.62.0
+crawlee==1.10.0
+minio==7.2.20
+prometheus-client==0.26.0
+extruct==0.18.0
+scrapling==0.4.15
+tldextract==5.3.2
+rapidfuzz==3.14.6
+dateparser==1.4.3
+imagehash==4.3.2
+langdetect==1.0.9
+spacy==3.8.16
+gliner==0.2.28
+transformers==5.13.1
+# CPU-only wheel — install with:
+# pip install --extra-index-url https://download.pytorch.org/whl/cpu torch==2.14.0
+torch==2.14.0
+# en_core_web_sm is not on PyPI — install separately:
+# python -m spacy download en_core_web_sm
+
+# --- OSINT-only ---
+phonenumbers==8.13.50
+holehe==1.61
+sherlock-project==0.16.0
+maigret==0.6.5
+psycopg[binary]==3.3.5
+
+# --- reddit_server / telegram_poc shared or unique ---
+python-dotenv==1.2.3
+telethon==1.45.0
+aiosqlite==0.22.1
+apscheduler==3.11.3
+python-multipart==0.0.32

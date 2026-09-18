@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Executive Technical Summary — Telegram OSINT Collection Service</title>
+<style>
+:root{
+  --ink:#12161f; --muted:#5a6474; --faint:#8a93a5;
+  --rule:#dfe3ea; --brand:#1b4a8a; --brand-soft:#e8eef7;
+  --code-bg:#f6f8fb; --crit:#b3261e; --warn:#b45309; --ok:#166534;
+}
+*{box-sizing:border-box}
+body{font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif;color:var(--ink);
+     margin:0;padding:6mm 10.5mm;font-size:7.05pt;line-height:1.26;
+     -webkit-print-color-adjust:exact;print-color-adjust:exact}
+code{font-family:Consolas,"Courier New",monospace;font-size:6.6pt;background:var(--code-bg);
+     padding:.15mm .6mm;border-radius:2px}
+
+header{border-bottom:2.2px solid var(--brand);padding-bottom:1.7mm;margin-bottom:2.2mm}
+.eyebrow{font-size:6.3pt;letter-spacing:.2em;text-transform:uppercase;color:var(--brand);font-weight:700}
+h1{font-size:15pt;margin:1mm 0 .8mm;letter-spacing:-.01em;line-height:1.08}
+.sub{color:var(--muted);font-size:7.8pt}
+.metaline{margin-top:1.6mm;font-size:6.4pt;color:var(--faint);display:flex;gap:4mm;flex-wrap:wrap}
+.metaline b{color:var(--muted);font-weight:600}
+
+h2{font-size:7.6pt;text-transform:uppercase;letter-spacing:.09em;color:var(--brand);
+   margin:0 0 1.3mm;padding-bottom:.7mm;border-bottom:1px solid var(--rule);font-weight:700}
+p{margin:0 0 1.5mm}
+ul{margin:0 0 1.5mm;padding-left:3.3mm}
+li{margin-bottom:.5mm}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:3.6mm;margin-bottom:2.2mm}
+.band{display:grid;grid-template-columns:repeat(5,1fr);gap:1.8mm;margin:0 0 2.2mm}
+.stat{background:var(--brand-soft);border-radius:3px;padding:1.3mm 2mm;text-align:center}
+.stat .n{font-size:12.5pt;font-weight:700;color:var(--brand);line-height:1.02}
+.stat .l{font-size:6pt;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:.5mm}
+
+table{width:100%;border-collapse:collapse;font-size:6.8pt;margin:0 0 1.6mm}
+th{text-align:left;background:var(--brand-soft);color:var(--brand);font-size:6.4pt;
+   padding:.75mm 1.1mm;border:1px solid var(--rule)}
+td{padding:.7mm 1.1mm;border:1px solid var(--rule);vertical-align:top}
+tbody tr:nth-child(even){background:#fafbfd}
+.sev{font-weight:700;white-space:nowrap}
+.sev.h{color:var(--crit)} .sev.m{color:var(--warn)} .sev.l{color:var(--muted)}
+.yes{color:var(--ok);font-weight:700} .no{color:var(--crit);font-weight:700}
+.part{color:var(--warn);font-weight:700}
+pre{background:var(--code-bg);border:1px solid var(--rule);border-left:2.5px solid var(--brand);
+    border-radius:3px;padding:1.6mm 2mm;margin:0 0 1.5mm;
+    font-family:Consolas,monospace;font-size:6.1pt;line-height:1.28}
+
+.rec{background:#f2f6fc;border-left:3px solid var(--brand);padding:2mm 2.6mm;border-radius:3px}
+.rec h2{border:0;margin-bottom:1mm;padding:0}
+footer{margin-top:2.4mm;padding-top:1.4mm;border-top:1px solid var(--rule);
+       font-size:6.1pt;color:var(--faint);display:flex;justify-content:space-between}
+</style></head>
+<body>
+
+<header>
+  <div class="eyebrow">Executive Technical Summary</div>
+  <h1>Telegram OSINT Collection Service</h1>
+  <div class="sub">Telegram MTProto data-collection and access-management API &mdash; state of the implementation</div>
+  <div class="metaline">
+    <span><b>Codebase</b> telegram_service v0.1.0</span>
+    <span><b>Document</b> v1.0 &middot; 6 Sep 2026</span>
+    <span><b>For</b> Team Leader / Technical Lead</span>
+    <span><b>Basis</b> full source, runtime database, test suite</span>
+    <span><b>Classification</b> Internal &mdash; Confidential</span>
+  </div>
+</header>
+
+<div class="band">
+  <div class="stat"><div class="n">35</div><div class="l">REST endpoints</div></div>
+  <div class="stat"><div class="n">1</div><div class="l">Telegram account</div></div>
+  <div class="stat"><div class="n">12,805</div><div class="l">Messages collected</div></div>
+  <div class="stat"><div class="n">189</div><div class="l">Automated tests</div></div>
+  <div class="stat"><div class="n">0</div><div class="l">Auth controls</div></div>
+</div>
+
+<div class="cols">
+  <section>
+    <h2>What it does</h2>
+    <p>Turns <strong>one authenticated Telegram user account</strong> into a controlled, auditable data-collection API: registers channels, groups and bots as <em>sources</em>, determines each one's <strong>real</strong> access status by probing Telegram rather than assuming it, runs a legitimate join-request workflow for private sources, monitors accessible sources on a checkpointed 5-minute cycle, backfills history on demand, and searches Telegram live &mdash; storing results in SQLite with per-message raw evidence and SHA-256 hashes.</p>
+    <p>Scope is deliberately <strong>collection and access management</strong>; analysis (NLP, OCR, correlation, risk scoring) is downstream and not implemented here. <strong>Stack:</strong> FastAPI + Uvicorn, Telethon (MTProto, not the Bot API), SQLAlchemy&nbsp;2 async over SQLite, APScheduler embedded in the API process.</p>
+  </section>
+  <section>
+    <h2>Architecture &amp; data flow</h2>
+<pre>Client -> FastAPI router    validation + status codes only
+       -> Service layer     business rules, access rules, audit
+       -> Telegram layer    the ONLY Telethon importer
+        | Repository layer  the ONLY query builder
+       -> Telegram MTProto  |  SQLite + raw evidence JSON</pre>
+    <p>Layering holds under inspection: routes never touch Telethon or SQL. Access is governed by a validated <strong>13-state machine</strong> that refuses to guess &mdash; a source becomes monitorable only after a real read probe succeeds.</p>
+  </section>
+</div>
+
+<section style="margin-bottom:2.2mm">
+  <h2>Capability position &mdash; what the account can and cannot reach</h2>
+  <table>
+    <thead><tr><th style="width:23%">Capability</th><th style="width:11%">Status</th><th>Determining factor</th></tr></thead>
+    <tbody>
+      <tr><td>Read public channels / groups</td><td class="yes">Supported</td><td>Verified read probe, then incremental collection with restart-safe checkpointing.</td></tr>
+      <tr><td>Read private sources</td><td class="part">Partial</td><td>Only after Telegram approves a join request. No bypass of any kind is attempted &mdash; by design.</td></tr>
+      <tr><td>Telegram-wide public search</td><td class="part">Partial</td><td><code>channels.searchPosts</code> is quota-gated by Telegram; the fallback <code>messages.searchGlobal</code> is <strong>account-scoped</strong>, not all of Telegram. Responses say which was used.</td></tr>
+      <tr><td>Join channels / invite links</td><td class="yes">Supported</td><td>Exactly one join request per source, ever; no alternative route after a rejection.</td></tr>
+      <tr><td>Detect a declined join request</td><td class="part">Partial</td><td>Invite links: yes. Username-based: <strong>Telegram exposes no decline signal</strong> &mdash; stays pending, accurately.</td></tr>
+      <tr><td>Send messages</td><td class="part">Partial</td><td>Exactly one literal <code>/start</code> to a registered bot. Reactions, polls, threads and member lists are not implemented.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section style="margin-bottom:2.2mm">
+  <h2>Findings requiring a decision</h2>
+  <table>
+    <thead><tr><th style="width:8%">Severity</th><th style="width:25%">Finding</th><th>Impact and fix</th></tr></thead>
+    <tbody>
+      <tr><td class="sev h">High</td><td><strong>No authentication on any endpoint</strong> (SEC-01); default bind <code>0.0.0.0</code></td>
+          <td>Anyone reaching the port can make the account join channels, send <code>/start</code>, drive search until Telegram rate-limits it, read all collected third-party content, and delete sources with their data. Swagger UI at <code>/docs</code> is an unauthenticated console over it. <strong>Fix:</strong> API-key dependency, bind to loopback, TLS at a proxy.</td></tr>
+      <tr><td class="sev h">High</td><td><strong>Two endpoints return 200 without saving</strong> (ISS-01)</td>
+          <td><code>PATCH /api/sources/{id}</code> and <code>POST /api/notifications/{id}/read</code> flush without committing, so the request-scoped session rolls back. Verified by reproduction. <strong>Fix:</strong> one line each, plus a regression test.</td></tr>
+      <tr><td class="sev m">Medium</td><td>No FloodWait enforcement or request budget</td>
+          <td>Rate limits are reported but never enforced; only search concurrency (3) is capped &mdash; collection, joins and link extraction are uncapped. Account restriction is the realistic failure mode.</td></tr>
+      <tr><td class="sev m">Medium</td><td>Backfill does not survive a restart (ISS-02); documented fast path not wired in (DOC-01)</td>
+          <td>Backfill runs as an in-process task, sticking at <code>RUNNING</code> with no resume or cancel. The README's event-driven access detection exists as code but is never called, so approval latency is <strong>up to 12 hours</strong>.</td></tr>
+      <tr><td class="sev l">Policy</td><td>Data at rest, and user/DM sources are monitorable</td>
+          <td>12,805 messages plus raw evidence stored unencrypted with no retention policy. Separately, the generic source path can put a person or bot into monitoring, collecting one-to-one conversation history &mdash; very likely unintended.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<div class="cols">
+  <section>
+    <h2>Strengths confirmed in code</h2>
+    <ul>
+      <li><strong>Access is never inferred</strong> &mdash; a real probe drives a validated state machine; blocked transitions are refused, not forced.</li>
+      <li><strong>Restart-safe collection</strong> &mdash; per-message commits plus a DB-level uniqueness constraint make re-collection a no-op.</li>
+      <li><strong>Evidence preservation</strong> &mdash; raw payload stored and SHA-256 hashed per message; audit row on every significant operation.</li>
+      <li><strong>No bypass anywhere</strong> &mdash; no invite guessing, no membership spoofing, no working around <code>ChannelPrivateError</code>, no automatic payment, no duplicate joins.</li>
+      <li><strong>Credential hygiene</strong> &mdash; api_hash, session data, codes and 2FA passwords never logged or returned; phones masked; queries logged by length only.</li>
+      <li><strong>No SSRF or SQL-injection surface</strong>; <strong>189 tests</strong> with a guard that fails the build if any published endpoint is untested.</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Recommended sequence</h2>
+    <p style="margin-bottom:.8mm"><strong>1 &mdash; Before any non-local deployment</strong></p>
+    <ul>
+      <li>Add API authentication; bind to <code>127.0.0.1</code>; terminate TLS at a reverse proxy.</li>
+      <li>Fix the two missing commits (ISS-01) with regression tests; bound every <code>limit</code> parameter.</li>
+    </ul>
+    <p style="margin-bottom:.8mm"><strong>2 &mdash; Account safety</strong></p>
+    <ul>
+      <li>Enforce FloodWait centrally instead of only reporting it.</li>
+      <li>Add a global outbound request budget covering collection, joins and link extraction; rate-limit joins; add jitter to collection cycles.</li>
+    </ul>
+    <p style="margin-bottom:.8mm"><strong>3 &mdash; Correctness and operations</strong></p>
+    <ul>
+      <li>Backfill lifecycle: startup reconciliation, cancellation, per-source concurrency guard.</li>
+      <li>Alembic migrations and a dialect-agnostic upsert before any PostgreSQL move; wire in or delete the event handler and align the README with the code.</li>
+    </ul>
+  </section>
+</div>
+
+<div class="rec">
+  <h2>Overall assessment</h2>
+  <p style="margin:0">The architecture is <strong>sound and unusually disciplined for a proof of concept</strong>: strict layering that holds under inspection, a state machine that refuses to guess access, restart-safe checkpointing backed by a database-level uniqueness guarantee, evidence preservation, comprehensive auditing, and an explicit refusal to bypass Telegram's controls. <strong>The gaps are operational, not architectural</strong> &mdash; no authentication, two silent persistence bugs, and no enforcement of the rate-limit discipline the design otherwise respects. All are small, well-isolated changes. <strong>Recommendation: keep the service on a trusted network only; fix ISS-01 and add authentication before any wider deployment; then address the account-safety backlog before increasing collection volume.</strong></p>
+</div>
+
+<footer>
+  <span>Full detail: <em>Telegram API Technical Documentation</em> v1.0 &mdash; 20 sections, 127 pages, all 35 endpoints documented</span>
+  <span>Internal &mdash; Confidential &middot; No credentials or collected content reproduced</span>
+</footer>
+
+</body></html>

@@ -1,0 +1,34 @@
+# Python virtual environments
+.venv/
+venv/
+
+# Python bytecode/cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Test/lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.benchmarks/
+
+# Secrets
+.env
+!*.env.example
+
+# Databases / sessions / runtime data
+*.db
+*.db-journal
+*.session
+*.session-journal
+*.sqlite
+*.sqlite3
+
+# Service runtime data directories
+**/data/
+Bluweb/storage/
+
+# Vendored third-party source (re-cloned by OSINT/scripts/setup_searxng.sh)
+OSINT/searxng-src/

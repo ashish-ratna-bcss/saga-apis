@@ -1,0 +1,246 @@
+from __future__ import annotations
+
+import asyncio
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+
+import httpx
+from playwright.async_api import Route, async_playwright
+
+from bluweb_app.core.config import Settings
+from bluweb_app.services.crawling.browser_scroll import ScrollBudget, ScrollResult, expand_dynamic_content
+from bluweb_app.services.security.url_security import URLSecurityError, URLSecurityService
+
+MAX_REDIRECTS = 5
+_MAX_RETRY_AFTER_SECONDS = 60.0
+_DEFAULT_RETRY_AFTER_SECONDS = 1.0
+
+# Process-wide concurrency cap on Chromium launches (item 2): each call
+# spins up a full browser process, and nothing previously bounded how many
+# could run at once across every concurrent crawl job. Sized from the first
+# Settings this module sees; every job shares one process-wide gate, not a
+# per-job one, since it's the OS process count that's the scarce resource.
+# ponytail: a semaphore, not a pool -- reuse-pooling browser contexts is a
+# real future optimization, not needed to fix "too many at once".
+_browser_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_browser_semaphore(settings: Settings) -> asyncio.Semaphore:
+    global _browser_semaphore
+    if _browser_semaphore is None:
+        _browser_semaphore = asyncio.Semaphore(settings.crawl_max_concurrent_browser_global)
+    return _browser_semaphore
+
+
+@dataclass
+class PageFetchResult:
+    success: bool
+    final_url: str | None = None
+    status_code: int | None = None
+    content_type: str | None = None
+    html: str | None = None
+    raw_bytes: bytes | None = None
+    latency_ms: float = 0.0
+    used_browser: bool = False
+    error: str | None = None
+    scroll: ScrollResult | None = None
+    retry_after_seconds: float | None = None
+    # Universal Adaptive Web Intelligence item 5: every hop between the
+    # requested URL and `final_url`, in order -- NOT used for document
+    # identity (that stays keyed on the frontier-normalized URL), only
+    # recorded as provenance so crawl_engine.py can preserve "what URL was
+    # actually requested" vs. "what URL responded" without guessing.
+    redirect_chain: list[str] = field(default_factory=list)
+
+
+def _parse_retry_after(header_value: str | None) -> float:
+    """Parse Retry-After as seconds or HTTP-date; clamp to [0, 60]."""
+    if not header_value or not header_value.strip():
+        return _DEFAULT_RETRY_AFTER_SECONDS
+    raw = header_value.strip()
+    try:
+        seconds = float(int(raw))
+    except ValueError:
+        try:
+            dt = parsedate_to_datetime(raw)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            seconds = (dt - datetime.now(timezone.utc)).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            return _DEFAULT_RETRY_AFTER_SECONDS
+    return max(0.0, min(_MAX_RETRY_AFTER_SECONDS, seconds))
+
+
+async def http_fetch_page(
+    url: str, settings: Settings, security: URLSecurityService, *, max_bytes: int
+) -> PageFetchResult:
+    start = time.monotonic()
+    current_url = url
+    rate_limit_retried = False
+    last_retry_after: float | None = None
+    redirect_chain: list[str] = []
+
+    async with security.build_client(timeout=settings.preflight_http_timeout_seconds) as client:
+        for _ in range(MAX_REDIRECTS + 1):
+            while True:
+                try:
+                    security.validate_scheme(current_url)
+                except URLSecurityError as exc:
+                    return PageFetchResult(success=False, error=str(exc), latency_ms=(time.monotonic() - start) * 1000)
+
+                try:
+                    response = await client.get(current_url)
+                except httpx.HTTPError as exc:
+                    return PageFetchResult(
+                        success=False,
+                        error=f"{type(exc).__name__}: {exc}",
+                        latency_ms=(time.monotonic() - start) * 1000,
+                    )
+
+                if response.is_redirect:
+                    location = response.headers.get("location")
+                    if not location:
+                        return PageFetchResult(
+                            success=False,
+                            error="too many redirects",
+                            latency_ms=(time.monotonic() - start) * 1000,
+                        )
+                    redirect_chain.append(current_url)
+                    current_url = str(httpx.URL(current_url).join(location))
+                    rate_limit_retried = False
+                    break  # advance outer redirect loop; do not count rate-limit retry
+
+                if response.status_code in (429, 503) and not rate_limit_retried:
+                    delay = _parse_retry_after(response.headers.get("retry-after"))
+                    last_retry_after = delay
+                    rate_limit_retried = True
+                    await asyncio.sleep(delay)
+                    continue  # same URL; does not consume a redirect hop
+
+                if len(response.content) > max_bytes:
+                    return PageFetchResult(
+                        success=False,
+                        error=f"response exceeded max_response_bytes ({max_bytes})",
+                        latency_ms=(time.monotonic() - start) * 1000,
+                    )
+
+                content_type = response.headers.get("content-type", "")
+                is_html = "html" in content_type
+                retry_after_seconds = (
+                    last_retry_after if response.status_code in (429, 503) else None
+                )
+                if response.status_code in (429, 503) and retry_after_seconds is None:
+                    retry_after_seconds = _parse_retry_after(response.headers.get("retry-after"))
+                return PageFetchResult(
+                    success=True,
+                    final_url=str(response.url),
+                    status_code=response.status_code,
+                    content_type=content_type,
+                    html=response.text if is_html else None,
+                    raw_bytes=response.content,
+                    latency_ms=(time.monotonic() - start) * 1000,
+                    retry_after_seconds=retry_after_seconds,
+                    redirect_chain=redirect_chain,
+                )
+
+    return PageFetchResult(success=False, error="too many redirects", latency_ms=(time.monotonic() - start) * 1000)
+
+
+async def _guarded_route(route: Route, security: URLSecurityService) -> None:
+    try:
+        hostname = security.validate_scheme(route.request.url)
+        await security.resolve_and_validate(hostname)
+    except URLSecurityError:
+        await route.abort()
+        return
+    await route.continue_()
+
+
+async def browser_fetch_page(
+    url: str,
+    settings: Settings,
+    security: URLSecurityService,
+    *,
+    enable_scroll: bool = False,
+    scroll_budget: ScrollBudget | None = None,
+) -> PageFetchResult:
+    """Fetch via Playwright. Optional bounded scroll/load-more expansion for
+    index/infinite-scroll pages. Always timeout-controlled and route-guarded.
+    """
+    start = time.monotonic()
+    timeout_ms = int(settings.preflight_browser_timeout_seconds * 1000)
+    budget = scroll_budget or ScrollBudget(
+        max_scrolls=getattr(settings, "crawl_max_scrolls", 5),
+        max_new_items=getattr(settings, "crawl_max_scroll_new_items", 200),
+        max_browser_seconds=min(
+            getattr(settings, "crawl_max_browser_seconds_per_page", 20.0),
+            settings.preflight_browser_timeout_seconds,
+        ),
+        max_total_bytes=getattr(settings, "crawl_max_response_bytes", 5_000_000),
+        max_consecutive_no_change=2,
+    )
+
+    try:
+        async with _get_browser_semaphore(settings), async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(user_agent=settings.crawler_user_agent)
+                page = await context.new_page()
+                await page.route("**/*", lambda route: _guarded_route(route, security))
+                response = await page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+                # Bounded settle for delayed/lazy content without requiring
+                # full networkidle (which hangs on long-polling SPAs).
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=min(5000, timeout_ms))
+                except Exception:  # noqa: BLE001
+                    await page.wait_for_timeout(500)
+
+                scroll_result = None
+                if enable_scroll:
+                    scroll_result = await expand_dynamic_content(page, budget, started_monotonic=start)
+                    html = scroll_result.html or await page.content()
+                else:
+                    # Still inline open shadow roots once for rendered extraction.
+                    try:
+                        await page.evaluate(
+                            """() => {
+                              for (const el of document.querySelectorAll('*')) {
+                                if (el.shadowRoot) {
+                                  const slot = document.createElement('div');
+                                  slot.setAttribute('data-webintel-shadow', '1');
+                                  slot.innerHTML = el.shadowRoot.innerHTML;
+                                  el.appendChild(slot);
+                                }
+                              }
+                            }"""
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
+                    html = await page.content()
+                    scroll_result = ScrollResult(stopped_reason="scroll_disabled", html=html)
+
+                final_url = page.url
+                status_code = response.status if response else None
+            finally:
+                await browser.close()
+    except Exception as exc:  # noqa: BLE001 - render failures are a fetch outcome, not a crash
+        return PageFetchResult(
+            success=False,
+            used_browser=True,
+            error=str(exc),
+            latency_ms=(time.monotonic() - start) * 1000,
+        )
+
+    return PageFetchResult(
+        success=True,
+        final_url=final_url,
+        status_code=status_code,
+        content_type="text/html",
+        html=html,
+        raw_bytes=html.encode("utf-8"),
+        used_browser=True,
+        latency_ms=(time.monotonic() - start) * 1000,
+        scroll=scroll_result,
+    )

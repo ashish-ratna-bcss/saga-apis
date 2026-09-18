@@ -1,0 +1,946 @@
+<title>Telegram API Flow Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+:root{
+  /* light palette - cool instrument-panel neutrals, petrol chrome */
+  --ground:#eef2f3;
+  --surface:#ffffff;
+  --surface-2:#f5f8f9;
+  --ink:#101a1f;
+  --ink-2:#3d505a;
+  --muted:#667c87;
+  --line:#d3dde1;
+  --line-soft:#e4ebee;
+  --petrol:#17505f;
+  --petrol-soft:#dbe8ec;
+  --tg:#a2560a;          /* touches Telegram - costs rate budget */
+  --tg-soft:#fbeedd;
+  --db:#3d6b1f;          /* local database only - free */
+  --db-soft:#e6f0dc;
+  --none:#66788a;
+  --none-soft:#e6eaee;
+  --danger:#a52a1f;
+  --danger-soft:#fbe9e7;
+  --shadow:0 1px 2px rgba(16,26,31,.06), 0 8px 24px -12px rgba(16,26,31,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0c1418;
+    --surface:#131e23;
+    --surface-2:#18262c;
+    --ink:#e8f0f2;
+    --ink-2:#adc0c8;
+    --muted:#7f97a1;
+    --line:#274049;
+    --line-soft:#1d3038;
+    --petrol:#7cc6da;
+    --petrol-soft:#173038;
+    --tg:#e9a447;
+    --tg-soft:#33240f;
+    --db:#94c96a;
+    --db-soft:#1e2d14;
+    --none:#8ea3b0;
+    --none-soft:#1e2a31;
+    --danger:#f08a7c;
+    --danger-soft:#37170f;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0c1418;
+  --surface:#131e23;
+  --surface-2:#18262c;
+  --ink:#e8f0f2;
+  --ink-2:#adc0c8;
+  --muted:#7f97a1;
+  --line:#274049;
+  --line-soft:#1d3038;
+  --petrol:#7cc6da;
+  --petrol-soft:#173038;
+  --tg:#e9a447;
+  --tg-soft:#33240f;
+  --db:#94c96a;
+  --db-soft:#1e2d14;
+  --none:#8ea3b0;
+  --none-soft:#1e2a31;
+  --danger:#f08a7c;
+  --danger-soft:#37170f;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  font-size:15px;line-height:1.55;
+}
+.wrap{max-width:1280px;margin:0 auto;padding:28px 22px 64px}
+
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;text-wrap:balance}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace}
+
+/* ---------- header ---------- */
+.masthead{border-bottom:2px solid var(--petrol);padding-bottom:18px;margin-bottom:22px}
+.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--petrol);font-weight:600}
+h1{font-size:34px;line-height:1.1;margin:8px 0 6px;letter-spacing:-.01em}
+.dek{color:var(--ink-2);max-width:66ch;margin:0}
+.dek b{color:var(--ink)}
+
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.key{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;
+  border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px 4px 8px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.dot.tg{background:var(--tg)} .dot.db{background:var(--db)} .dot.none{background:var(--none)}
+
+/* ---------- lifecycle rail ---------- */
+.rail-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:30px 0 12px;flex-wrap:wrap}
+h2{font-size:20px;margin:0;letter-spacing:-.005em}
+.hint{color:var(--muted);font-size:13px;margin:0}
+
+.rail{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px}
+.step{
+  background:var(--surface);border:1px solid var(--line);border-radius:4px;
+  padding:12px 13px;text-align:left;cursor:pointer;color:inherit;font:inherit;
+  display:flex;flex-direction:column;gap:5px;position:relative;
+  border-top:3px solid var(--petrol);transition:transform .12s ease,box-shadow .12s ease;
+}
+.step:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.step:focus-visible{outline:2px solid var(--petrol);outline-offset:2px}
+.step .n{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--petrol);font-weight:600}
+.step .t{font-weight:600;font-size:14px;line-height:1.25}
+.step .p{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);
+  word-break:break-all;line-height:1.35}
+
+/* ---------- console ---------- */
+.console{display:grid;grid-template-columns:340px 1fr;gap:18px;margin-top:14px;align-items:start}
+@media (max-width:940px){.console{grid-template-columns:1fr}}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:5px;box-shadow:var(--shadow)}
+.panel-hd{padding:11px 14px;border-bottom:1px solid var(--line-soft);display:flex;
+  align-items:center;justify-content:space-between;gap:10px}
+.panel-hd h3{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:600}
+
+/* index */
+.index{max-height:78vh;overflow-y:auto}
+.grp{padding:10px 12px 4px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--petrol);font-weight:700;position:sticky;top:0;background:var(--surface);
+  border-bottom:1px solid var(--line-soft)}
+.ep{width:100%;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;
+  padding:7px 12px;background:none;border:0;border-left:3px solid transparent;
+  color:inherit;font:inherit;text-align:left;cursor:pointer}
+.ep:hover{background:var(--surface-2)}
+.ep:focus-visible{outline:2px solid var(--petrol);outline-offset:-2px}
+.ep[aria-current="true"]{background:var(--petrol-soft);border-left-color:var(--petrol)}
+.verb{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.03em;
+  padding:2px 5px;border-radius:3px;background:var(--none-soft);color:var(--ink-2);min-width:52px;text-align:center}
+.verb.GET{background:var(--db-soft);color:var(--db)}
+.verb.POST{background:var(--tg-soft);color:var(--tg)}
+.verb.PATCH,.verb.DELETE{background:var(--danger-soft);color:var(--danger)}
+.ep .path{font-family:"IBM Plex Mono",monospace;font-size:11.5px;line-height:1.3;word-break:break-all}
+
+/* detail */
+.detail{padding:16px 18px 20px}
+.d-verb{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;
+  padding:3px 7px;border-radius:3px;background:var(--petrol-soft);color:var(--petrol)}
+.d-path{font-family:"IBM Plex Mono",monospace;font-size:19px;font-weight:500;margin:8px 0 2px;
+  word-break:break-all;line-height:1.3}
+.d-sum{color:var(--ink-2);margin:6px 0 0;max-width:70ch}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.tag{font-size:11.5px;border-radius:3px;padding:3px 8px;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--ink-2)}
+.tag.tg{background:var(--tg-soft);border-color:transparent;color:var(--tg);font-weight:600}
+.tag.db{background:var(--db-soft);border-color:transparent;color:var(--db);font-weight:600}
+.tag.none{background:var(--none-soft);border-color:transparent;color:var(--none);font-weight:600}
+.tag.warn{background:var(--danger-soft);border-color:transparent;color:var(--danger);font-weight:600}
+
+.sec{margin-top:22px}
+.sec > h4{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);
+  margin:0 0 9px;font-weight:600}
+
+/* trace diagram */
+figure{margin:0}
+figcaption{font-size:12.5px;color:var(--muted);margin-top:8px;max-width:72ch}
+.trace{width:100%;height:auto;display:block}
+.detail .trace{max-width:620px}
+.detail .edge-label{font-size:11px}
+.node rect{fill:var(--surface-2);stroke:var(--line);stroke-width:1.5}
+.node text{fill:var(--muted);font-family:"IBM Plex Sans",sans-serif;font-size:12px;font-weight:500}
+.node .sub{font-family:"IBM Plex Mono",monospace;font-size:9.5px;fill:var(--muted);opacity:.75}
+.node.on rect{fill:var(--petrol-soft);stroke:var(--petrol);stroke-width:2}
+.node.on text{fill:var(--ink);font-weight:600}
+.node.on .sub{fill:var(--petrol);opacity:1}
+.node.tg-on rect{fill:var(--tg-soft);stroke:var(--tg)}
+.node.tg-on text{fill:var(--ink)} .node.tg-on .sub{fill:var(--tg);opacity:1}
+.node.db-on rect{fill:var(--db-soft);stroke:var(--db)}
+.node.db-on text{fill:var(--ink)} .node.db-on .sub{fill:var(--db);opacity:1}
+.edge{stroke:var(--line);stroke-width:1.5;fill:none}
+.edge.on{stroke:var(--petrol);stroke-width:2.2}
+.edge.tg-on{stroke:var(--tg);stroke-width:2.2}
+.edge.db-on{stroke:var(--db);stroke-width:2.2}
+.edge-label{fill:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:9.5px}
+.edge-label.on{fill:var(--ink-2)}
+
+/* step list */
+ol.steps{list-style:none;counter-reset:s;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
+ol.steps li{counter-increment:s;position:relative;padding:0 0 12px 30px;border-left:1.5px dashed var(--line);
+  margin-left:9px;font-size:14px;line-height:1.5}
+ol.steps li:last-child{border-left-color:transparent;padding-bottom:0}
+ol.steps li::before{content:counter(s);position:absolute;left:-10px;top:0;width:19px;height:19px;
+  border-radius:50%;background:var(--surface);border:1.5px solid var(--line);color:var(--muted);
+  font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;display:grid;place-items:center}
+ol.steps li.tg::before{border-color:var(--tg);color:var(--tg);background:var(--tg-soft)}
+ol.steps li.db::before{border-color:var(--db);color:var(--db);background:var(--db-soft)}
+ol.steps li code{font-size:12.5px;background:var(--surface-2);padding:1px 4px;border-radius:3px;
+  border:1px solid var(--line-soft)}
+
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13.5px}
+.kv dt{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.kv dd{margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-family:"IBM Plex Mono",monospace;font-size:11.5px;padding:2px 7px;border-radius:3px;
+  background:var(--surface-2);border:1px solid var(--line-soft)}
+.chip.tg{background:var(--tg-soft);border-color:transparent;color:var(--tg)}
+.chip.db{background:var(--db-soft);border-color:transparent;color:var(--db)}
+
+.codes{display:flex;flex-wrap:wrap;gap:6px}
+.code-pill{font-family:"IBM Plex Mono",monospace;font-size:11.5px;padding:2px 8px;border-radius:3px;
+  border:1px solid var(--line);background:var(--surface-2)}
+.code-pill b{font-weight:600}
+.code-pill.ok{border-color:var(--db);color:var(--db)}
+.code-pill.err{border-color:var(--danger);color:var(--danger)}
+
+.note{margin-top:20px;border-left:3px solid var(--tg);background:var(--tg-soft);
+  padding:11px 13px;border-radius:0 4px 4px 0;font-size:13.5px;color:var(--ink)}
+.note.bug{border-left-color:var(--danger);background:var(--danger-soft)}
+.note b{display:block;margin-bottom:2px}
+
+/* state machine + comparison blocks */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px}
+@media (max-width:820px){.two{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:16px 18px}
+.card h3{font-size:15px;margin:0 0 4px}
+.card p{margin:0 0 10px;color:var(--ink-2);font-size:14px}
+.card ul{margin:0;padding-left:18px;font-size:13.5px;color:var(--ink-2)}
+.card li{margin-bottom:4px}
+.card li b{color:var(--ink)}
+.scroll{overflow-x:auto}
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);
+  color:var(--muted);font-size:12.5px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">Telegram OSINT Collection Service &middot; v0.1.0</div>
+  <h1>Telegram API Flow Explorer</h1>
+  <p class="dek">All <b>35 endpoints</b>, and what each one actually does inside. Pick an endpoint to trace it
+     from the router down through the service layer to <b>Telegram MTProto</b> or <b>SQLite</b> &mdash; the single
+     most useful thing to know about any call here is whether it spends the Telegram account's rate budget.</p>
+  <div class="legend">
+    <span class="key"><span class="dot tg"></span> Calls Telegram &mdash; costs rate budget</span>
+    <span class="key"><span class="dot db"></span> Local database only &mdash; free, no limits</span>
+    <span class="key"><span class="dot none"></span> No I/O</span>
+  </div>
+</header>
+
+<div class="rail-head">
+  <h2>The order you call things in</h2>
+  <p class="hint">Nothing collects until access is verified. Each step jumps to its endpoint below.</p>
+</div>
+<nav class="rail" id="rail" aria-label="Lifecycle sequence"></nav>
+
+<div class="rail-head">
+  <h2>Endpoint tracer</h2>
+  <p class="hint">Grouped as the routers group them. Selected endpoint lights up its path.</p>
+</div>
+
+<div class="console">
+  <nav class="panel index" id="index" aria-label="All endpoints"></nav>
+  <div class="panel">
+    <div class="detail" id="detail" aria-live="polite"></div>
+  </div>
+</div>
+
+<div class="rail-head">
+  <h2>Two things that trip people up</h2>
+  <p class="hint">Both come straight from the code, and both cause "why is nothing happening?"</p>
+</div>
+<div class="two">
+  <div class="card">
+    <h3>Registering does not start collection</h3>
+    <p><code>monitoring_enabled: true</code> on <code>POST /api/sources</code> only sets a column. The collection
+       job selects on <b>both</b> <code>monitoring_enabled = true</code> <b>and</b>
+       <code>access_status = 'MONITORING'</code>.</p>
+    <ul>
+      <li>A source left at <b>PUBLIC_ACCESSIBLE</b> with the flag on is <b>never collected</b>.</li>
+      <li>Only <code>POST /api/sources/{id}/monitoring/start</code> moves it to MONITORING.</li>
+      <li>That state exists in the live database today (source 7).</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>"Search" means two different things</h3>
+    <p>Five endpoints query Telegram live; three read rows already collected. They never mix.</p>
+    <ul>
+      <li><b>Live</b> &mdash; <code>/api/telegram/search/global</code>, <code>/api/sources/{id}/search</code>,
+          <code>/api/telegram/channels/{id}/search</code>. Every call hits Telegram.</li>
+      <li><b>Stored</b> &mdash; <code>/api/messages</code>, <code>/api/sources/{id}/messages</code>.
+          Free, unlimited, no rate-limit risk.</li>
+      <li>Live search <b>persists nothing</b>. The only writer is
+          <code>POST /api/telegram/search/results/save</code>.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="rail-head">
+  <h2>Access states gate everything</h2>
+  <p class="hint">A source's status decides whether search, monitoring and backfill are allowed to run at all.</p>
+</div>
+<div class="card scroll">
+<figure>
+<svg class="trace" viewBox="0 0 900 320" role="img"
+     aria-label="Access state machine: DISCOVERED branches to PUBLIC_ACCESSIBLE, ACCESSIBLE, JOIN_REQUEST_REQUIRED, ACCESS_DENIED or NOT_FOUND. Join requests move to PENDING then APPROVED to JOINED, or REJECTED to DISABLED. Only PUBLIC_ACCESSIBLE, ACCESSIBLE, JOINED and MONITORING permit reading.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <g class="node on">
+    <rect x="20" y="130" width="118" height="40" rx="3"/>
+    <text x="79" y="155" text-anchor="middle">DISCOVERED</text>
+  </g>
+
+  <g class="node db-on">
+    <rect x="230" y="20" width="150" height="40" rx="3"/>
+    <text x="305" y="38" text-anchor="middle">PUBLIC_ACCESSIBLE</text>
+    <text x="305" y="52" text-anchor="middle" class="sub">readable</text>
+  </g>
+  <g class="node db-on">
+    <rect x="230" y="80" width="150" height="40" rx="3"/>
+    <text x="305" y="98" text-anchor="middle">ACCESSIBLE</text>
+    <text x="305" y="112" text-anchor="middle" class="sub">already a member</text>
+  </g>
+  <g class="node tg-on">
+    <rect x="230" y="140" width="150" height="40" rx="3"/>
+    <text x="305" y="158" text-anchor="middle">JOIN_REQUEST_</text>
+    <text x="305" y="172" text-anchor="middle">REQUIRED</text>
+  </g>
+  <g class="node">
+    <rect x="230" y="200" width="150" height="34" rx="3"/>
+    <text x="305" y="221" text-anchor="middle">ACCESS_DENIED</text>
+  </g>
+  <g class="node">
+    <rect x="230" y="246" width="150" height="34" rx="3"/>
+    <text x="305" y="267" text-anchor="middle">NOT_FOUND</text>
+  </g>
+
+  <g class="node tg-on">
+    <rect x="440" y="140" width="150" height="40" rx="3"/>
+    <text x="515" y="158" text-anchor="middle">JOIN_REQUEST_</text>
+    <text x="515" y="172" text-anchor="middle">PENDING</text>
+  </g>
+  <g class="node db-on">
+    <rect x="650" y="100" width="130" height="40" rx="3"/>
+    <text x="715" y="118" text-anchor="middle">JOINED</text>
+    <text x="715" y="132" text-anchor="middle" class="sub">approved</text>
+  </g>
+  <g class="node">
+    <rect x="650" y="180" width="130" height="40" rx="3"/>
+    <text x="715" y="198" text-anchor="middle">DISABLED</text>
+    <text x="715" y="212" text-anchor="middle" class="sub">rejected</text>
+  </g>
+  <g class="node db-on">
+    <rect x="650" y="20" width="130" height="40" rx="3"/>
+    <text x="715" y="38" text-anchor="middle">MONITORING</text>
+    <text x="715" y="52" text-anchor="middle" class="sub">collecting</text>
+  </g>
+
+  <g color="var(--muted)">
+    <path class="edge on" d="M138 145 L 225 45"  marker-end="url(#ar)"/>
+    <path class="edge on" d="M138 150 L 225 100" marker-end="url(#ar)"/>
+    <path class="edge on" d="M138 155 L 225 160" marker-end="url(#ar)"/>
+    <path class="edge"    d="M138 160 L 225 214" marker-end="url(#ar)"/>
+    <path class="edge"    d="M138 165 L 225 260" marker-end="url(#ar)"/>
+    <path class="edge tg-on" d="M380 160 L 435 160" marker-end="url(#ar)"/>
+    <path class="edge db-on" d="M590 152 L 645 126" marker-end="url(#ar)"/>
+    <path class="edge"       d="M590 168 L 645 194" marker-end="url(#ar)"/>
+    <path class="edge db-on" d="M715 100 L 715 64"  marker-end="url(#ar)"/>
+    <path class="edge db-on" d="M380 40 L 645 40"   marker-end="url(#ar)"/>
+    <path class="edge db-on" d="M380 100 L 500 100 L 500 70 L 645 45" marker-end="url(#ar)"/>
+  </g>
+  <g class="edge-label">
+    <text x="182" y="78" text-anchor="middle">probe result</text>
+    <text x="404" y="152" text-anchor="middle">request</text>
+    <text x="614" y="120">approved</text>
+    <text x="600" y="196">rejected</text>
+    <text x="722" y="86">start</text>
+  </g>
+</svg>
+<figcaption><b>Only the four highlighted states permit reading.</b> A probe against Telegram decides the branch &mdash;
+status is never inferred. Amber marks the states that need a join request to progress; grey states are terminal
+for this account. Monitoring, live per-source search and backfill all check this same set before doing anything.</figcaption>
+</figure>
+</div>
+
+<footer>
+  <span>Derived from the routers, services and Telegram layer of <span class="mono">telegram_service</span> v0.1.0.</span>
+  <span>Full reference: <em>Telegram API Technical Documentation</em> v1.0</span>
+</footer>
+</div>
+
+<script>
+const L = {CLIENT:"client", ROUTER:"router", SERVICE:"service", TG:"tglayer", MTP:"mtproto", REPO:"repo", DB:"db", SCHED:"sched"};
+
+const EP = [
+ /* ---------------- health ---------------- */
+ {g:"Health & status", m:"GET", p:"/health", io:"none",
+  s:"Liveness probe. Returns a constant and touches nothing at all.",
+  svc:"none - answered in the route", layers:[L.CLIENT,L.ROUTER],
+  steps:[["Route returns {status:'ok'}. No service, no database, no Telegram."]],
+  codes:[["200","ok"]]},
+
+ {g:"Health & status", m:"GET", p:"/ready", io:"none",
+  s:"Reports whether Telegram credentials are configured. It does NOT report whether the session is signed in.",
+  svc:"reads Settings only", layers:[L.CLIENT,L.ROUTER],
+  steps:[["Reads <code>TELEGRAM_API_ID</code> / <code>TELEGRAM_API_HASH</code> from settings."],
+         ["Returns <code>ready</code> or <code>not_configured</code>. No RPC is issued."]],
+  codes:[["200","ok"]],
+  note:["'ready' does not mean Telegram is reachable.","Use <code>GET /api/telegram/status</code> for the real connection state."]},
+
+ /* ---------------- session ---------------- */
+ {g:"Telegram session", m:"GET", p:"/api/telegram/status", io:"tg",
+  s:"The authoritative view of the service's Telegram connection: connected, signed in, which account, and whether the session was latched invalid.",
+  svc:"authentication.get_status", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP],
+  rpc:["auth.exportAuthorization (connect)","users.getFullUser (get_me)"],
+  steps:[["Attempts a connect if not already connected.","tg"],
+         ["Checks <code>is_user_authorized()</code>.","tg"],
+         ["When signed in, calls <code>get_me()</code> and <b>masks the phone number</b>.","tg"],
+         ["Failures are reported in the body, never as an HTTP error."]],
+  codes:[["200","always"]],
+  note:["Never leaks credentials.","No <code>api_hash</code>, no session data, and only a masked phone (first two and last two digits)."]},
+
+ {g:"Telegram session", m:"POST", p:"/api/telegram/auth/send-code", io:"tg",
+  s:"Step 1 of the three-step login. Asks Telegram to send a verification code to the account's phone.",
+  svc:"authentication.send_code", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP],
+  rpc:["auth.sendCode"],
+  body:'{ "phone": "+15551234567" }',
+  steps:[["Connects the client.","tg"],
+         ["Telegram sends the login code.","tg"],
+         ["<code>phone_code_hash</code> is held <b>in memory only</b> — never written to disk."]],
+  codes:[["200","success and handled failure"],["422","phone missing"]],
+  note:["Unauthenticated, and it triggers a real login SMS.","A restart between this call and verify-code loses the pending hash and the flow must start over."]},
+
+ {g:"Telegram session", m:"POST", p:"/api/telegram/auth/verify-code", io:"tg",
+  s:"Step 2. Signs in with the code, or reports that a 2FA password is still needed.",
+  svc:"authentication.verify_code", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP],
+  rpc:["auth.signIn"],
+  body:'{ "phone": "+15551234567", "code": "12345" }',
+  steps:[["Guard: a pending hash must exist for this exact phone."],
+         ["Signs in against Telegram.","tg"],
+         ["2FA enabled? Returns <code>requires_password: true</code> — go to step 3."],
+         ["On success, clears the latched invalid-session flag so collection resumes."]],
+  codes:[["200","success and handled failure"],["422","fields missing"]]},
+
+ {g:"Telegram session", m:"POST", p:"/api/telegram/auth/verify-password", io:"tg",
+  s:"Step 3, only when 2FA is enabled. Supplies the cloud password to finish sign-in.",
+  svc:"authentication.verify_password", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP],
+  rpc:["auth.checkPassword"],
+  body:'{ "password": "<SECRET>" }',
+  steps:[["Sends the 2FA password to Telegram.","tg"],
+         ["Clears the pending phone and hash, and unlatches the session."]],
+  codes:[["200","success and handled failure"],["422","password missing"]],
+  note:["The 2FA password crosses the wire in plain JSON.","The service speaks HTTP, not HTTPS — put TLS in front of it."]},
+
+ /* ---------------- sources ---------------- */
+ {g:"Sources", m:"POST", p:"/api/sources", io:"tg",
+  s:"The entry point for everything. Registers a channel, group, bot or user as a source, then immediately resolves it against Telegram and records its real access status.",
+  svc:"SourceService.register_source", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["contacts.resolveUsername","messages.getHistory (limit 1)","messages.checkChatInvite (invite links)"],
+  tables:["telegram_sources","telegram_entities","audit_logs"],
+  body:'{ "identifier": "@examplechannel", "monitoring_enabled": true }',
+  steps:[["<code>normalize_identifier</code> parses <code>@name</code>, a t.me link, an invite hash or a numeric id. Pure string work — no network."],
+         ["<b>Dedup pass 1</b> on the normalized identifier → 409 if already registered.","db"],
+         ["Insert the row as <b>DISCOVERED</b> and commit.","db"],
+         ["Probe Telegram for real access: resolve the entity, then read one message.","tg"],
+         ["Record the probe result and run it through the state machine.","db"],
+         ["<b>Dedup pass 2</b> on the resolved <code>telegram_entity_id</code> — catches the same channel added as <code>@name</code> and as its numeric id. The new row is deleted and 409 returned.","db"]],
+  codes:[["201","created"],["409","duplicate"],["422","not a valid identifier"]],
+  note:["<code>monitoring_enabled: true</code> does not start monitoring.","It sets a column. Collection also needs <code>access_status = MONITORING</code>, which only <code>monitoring/start</code> sets."]},
+
+ {g:"Sources", m:"GET", p:"/api/sources", io:"db",
+  s:"Lists registered sources, ordered by id.",
+  svc:"SourceService.list_sources", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["telegram_sources"],
+  steps:[["Straight select with limit and offset.","db"]],
+  codes:[["200","ok"]],
+  note:["<code>limit</code> is unbounded in code.","<code>?limit=1000000</code> is accepted and attempted."]},
+
+ {g:"Sources", m:"GET", p:"/api/sources/{source_id}", io:"db",
+  s:"Fetches one source by internal id. Reads the stored row — it does not re-probe Telegram.",
+  svc:"SourceService.get_source", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["telegram_sources"],
+  steps:[["Primary-key lookup; 404 when missing.","db"]],
+  codes:[["200","ok"],["404","no such source"]]},
+
+ {g:"Sources", m:"PATCH", p:"/api/sources/{source_id}", io:"db",
+  s:"Updates monitoring_enabled and/or title. Not the way to start or stop monitoring.",
+  svc:"SourceService.update_source", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["telegram_sources"],
+  body:'{ "title": "Example Channel (priority)" }',
+  steps:[["Drops unset and null fields."],
+         ["Writes the columns and <b>flushes</b>.","db"],
+         ["Returns 200 with the changed object — serialized from memory."],
+         ["Session closes and the transaction is <b>rolled back</b>. The change is gone.","db"]],
+  codes:[["200","returned, but not saved"],["404","no such source"]],
+  bug:["Confirmed defect: this endpoint does not persist.","The repository flushes without committing and nothing commits afterwards, so the request-scoped session rolls back on close. Verified by reproducing the pattern against SQLAlchemy 2.0.52. One-line fix."]},
+
+ {g:"Sources", m:"DELETE", p:"/api/sources/{source_id}", io:"db",
+  s:"Permanently removes a source and cascades to its messages, media, access requests and checkpoint.",
+  svc:"SourceService.delete_source", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["telegram_sources","telegram_messages","telegram_media","telegram_access_requests","collection_checkpoints"],
+  steps:[["404 when the source does not exist."],
+         ["ORM cascade deletes messages → media, access requests and the checkpoint.","db"],
+         ["Commits. There is no soft-delete and no undo."]],
+  codes:[["204","deleted"],["404","no such source"]],
+  note:["Destructive, unauthenticated, and it leaves debris.","Raw evidence JSON under <code>data/raw_messages/&lt;id&gt;/</code> is not removed, and audit rows keep a dangling source id."]},
+
+ {g:"Sources", m:"POST", p:"/api/sources/{source_id}/request-access", io:"tg",
+  s:"Submits exactly one legitimate join request for a private source, and records it for the 12-hour reconciliation job.",
+  svc:"SourceService.request_access", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["channels.joinChannel (username)","messages.importChatInvite (invite hash)"],
+  tables:["telegram_access_requests","telegram_sources","notifications","audit_logs"],
+  steps:[["Already a PENDING request? Return it unchanged and <b>send nothing to Telegram</b>.","db"],
+         ["State must be JOIN_REQUEST_REQUIRED or ERROR, else 409."],
+         ["Submit one join attempt.","tg"],
+         ["Store the request with <code>next_check_at</code> set to +12 hours.","db"],
+         ["Joined instantly → JOINED plus a notification. Approval needed → JOIN_REQUEST_PENDING.","db"]],
+  codes:[["200","submitted or existing returned"],["404","no such source"],["409","wrong state"],["500","session unusable (unmapped RuntimeError)"]],
+  note:["Idempotent by design.","One request per source, ever. After a rejection no alternative access route is attempted."]},
+
+ {g:"Sources", m:"GET", p:"/api/sources/{source_id}/access-status", io:"db",
+  s:"Returns the operational status and, separately, the result of the most recent live probe. The two are deliberately not merged.",
+  svc:"SourceService.get_access_status", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["telegram_sources"],
+  steps:[["Reads stored columns only — no Telegram call.","db"],
+         ["<code>access_status</code> is operational; <code>last_probe_*</code> is what the last probe actually found."]],
+  codes:[["200","ok"],["404","no such source"]],
+  note:["The two fields can legitimately disagree.","A probe finding PUBLIC_ACCESSIBLE must not downgrade a source that is operationally MONITORING, so both are surfaced. <code>next_status_check_at</code> is always null — nothing writes it."]},
+
+ {g:"Sources", m:"POST", p:"/api/sources/{source_id}/check-access", io:"tg",
+  s:"Forces a fresh live probe against Telegram and updates the stored record.",
+  svc:"SourceService.check_access", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["contacts.resolveUsername","messages.getHistory (limit 1)","messages.checkChatInvite"],
+  tables:["telegram_sources","telegram_entities","audit_logs"],
+  steps:[["Verify the session first, so a bad session is never misread as 'channel not found'.","tg"],
+         ["Resolve the entity, then attempt to read one message.","tg"],
+         ["Write <code>last_probe_*</code> <b>unconditionally</b>, whatever the state machine then decides.","db"],
+         ["Apply the transition. A blocked transition leaves the status untouched and records the reason.","db"]],
+  codes:[["200","probe ran — outcome is in the body"],["404","no such source"]],
+  note:["Failure is state, not an HTTP error.","A session problem is recorded as ERROR and still returns 200."]},
+
+ /* ---------------- monitoring ---------------- */
+ {g:"Monitoring", m:"POST", p:"/api/sources/{source_id}/monitoring/start", io:"tg",
+  s:"Moves a verified-accessible source into MONITORING and runs one collection cycle immediately, before responding.",
+  svc:"MonitoringService.start_monitoring", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["contacts.resolveUsername","messages.getHistory (min_id, forward)"],
+  tables:["telegram_sources","telegram_messages","telegram_media","collection_checkpoints","audit_logs"],
+  steps:[["Session must be authorized, else 409.","tg"],
+         ["Status must be PUBLIC_ACCESSIBLE, ACCESSIBLE, JOINED or already MONITORING, else 409."],
+         ["Transition to MONITORING; set the flag and the start timestamp.","db"],
+         ["<b>Run the first collection cycle inline</b> — walk messages newer than the checkpoint.","tg"],
+         ["Per message: write raw evidence JSON, insert on-conflict-do-nothing, advance the checkpoint, <b>commit</b>.","db"]],
+  codes:[["200","started, first cycle done"],["404","no such source"],["409","access not verified"]],
+  note:["This call is synchronous through the first collection.","It can pull up to COLLECTION_BATCH_LIMIT (200) messages before responding. Set a generous client timeout."]},
+
+ {g:"Monitoring", m:"POST", p:"/api/sources/{source_id}/monitoring/stop", io:"db",
+  s:"Disables monitoring. The scheduled job skips the source from the next cycle.",
+  svc:"MonitoringService.stop_monitoring", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["telegram_sources","audit_logs"],
+  steps:[["Clears <code>monitoring_enabled</code> and commits.","db"],
+         ["Deliberately leaves <code>access_status</code> at MONITORING so restarting needs no transition."]],
+  codes:[["200","stopped"],["404","no such source"]]},
+
+ {g:"Monitoring", m:"GET", p:"/api/sources/{source_id}/monitoring-status", io:"db",
+  s:"Monitoring state and collection progress markers for one source.",
+  svc:"MonitoringService.get_monitoring_status", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["telegram_sources"],
+  steps:[["Reads the row. A rising <code>last_message_id</code> means collection is advancing.","db"]],
+  codes:[["200","ok"],["404","no such source"]]},
+
+ /* ---------------- stored messages ---------------- */
+ {g:"Stored messages", m:"GET", p:"/api/sources/{source_id}/messages", io:"db",
+  s:"Reads locally stored messages for one source, with flat filters. Never calls Telegram.",
+  svc:"MessageService.list_for_source", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["telegram_messages"],
+  params:["limit","offset","keyword","sender_username","media_type","date_from","date_to"],
+  steps:[["Select on <code>source_id</code> plus any filters.","db"],
+         ["<code>keyword</code> is a case-insensitive substring match; <code>sender_username</code> is exact.","db"],
+         ["Ordered by Telegram message id, descending.","db"]],
+  codes:[["200","ok, empty array for an unknown source"]],
+  note:["For a live query against this source instead, use <code>GET /api/sources/{id}/search</code>."]},
+
+ {g:"Stored messages", m:"GET", p:"/api/messages/{message_id}", io:"db",
+  s:"One stored message by its internal row id — not the Telegram message id.",
+  svc:"MessageService.get_message", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["telegram_messages"],
+  steps:[["Primary-key lookup; 404 when missing.","db"]],
+  codes:[["200","ok"],["404","not found"]]},
+
+ {g:"Stored messages", m:"GET", p:"/api/messages", io:"db",
+  s:"Flat-filter search across everything collected. The cheapest and safest query in the service.",
+  svc:"MessageService.search", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["telegram_messages"],
+  params:["keyword","source_id","sender_username","media_type","date_from","date_to","limit","offset"],
+  steps:[["Filters combine with SQL AND; ordering is always <code>message_date DESC</code>.","db"],
+         ["No Telegram traffic at all, so no rate-limit exposure.","db"]],
+  codes:[["200","ok"]],
+  note:["Flat filters only.","No boolean or nested AND/OR/NOT syntax, no full-text index, no relevance ranking and no result totals."]},
+
+ /* ---------------- live search ---------------- */
+ {g:"Live Telegram search", m:"GET", p:"/api/telegram/search/global", io:"tg",
+  s:"Live Telegram-wide search for public posts. Prefers Telegram's genuine cross-membership post search and falls back when the free quota is gone.",
+  svc:"SearchService.global_search", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP],
+  rpc:["channels.checkSearchPostsFlood","channels.searchPosts","messages.searchGlobal"],
+  tables:["audit_logs"],
+  params:["q","limit","cursor","from_date","to_date","channel_username","channel_id","media_type","sort","include_raw"],
+  steps:[["Session must be authorized — 401 with no RPC issued otherwise."],
+         ["Bounded: at most <b>3 concurrent search RPCs</b>, and identical concurrent calls share one execution."],
+         ["Ask Telegram how much free quota remains.","tg"],
+         ["Quota left → <code>channels.searchPosts</code>, visibility <b>public</b>.","tg"],
+         ["Quota gone → a warning, <b>no Stars are ever spent</b>, fall back to <code>messages.searchGlobal</code>, visibility <b>account_scoped</b>.","tg"],
+         ["Normalize, apply local filters, sort, build the cursor. <b>Nothing is persisted.</b>"]],
+  codes:[["200","ok, possibly with warnings"],["401","session invalid"],["429","FLOOD_WAIT + retry_after_seconds"],["402","premium or quota"],["502","Telegram RPC error"]],
+  note:["This is not a search of all of Telegram.","When <code>method_used</code> is <code>messages.searchGlobal</code>, results come from Telegram's index <i>for this account</i> — mostly channels it already joined. Check the <code>visibility</code> field on every result."]},
+
+ {g:"Live Telegram search", m:"POST", p:"/api/telegram/search/sources", io:"tg",
+  s:"Live search across a chosen set of registered sources, reporting which were skipped rather than failing the call.",
+  svc:"SearchService.search_selected_sources", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["contacts.resolveUsername (per source)","messages.search (per source)"],
+  tables:["telegram_sources","audit_logs"],
+  body:'{ "q": "invoice", "source_ids": [1, 3], "limit": 25 }',
+  steps:[["Omit <code>source_ids</code> and it searches <b>every</b> monitoring-enabled source.","db"],
+         ["Sources whose stored status is not searchable are listed in <code>skipped</code> and never queried.","db"],
+         ["Searches the rest <b>sequentially</b> — one shared DB session makes parallelism unsafe.","tg"],
+         ["A per-source Telegram error becomes a <code>skipped</code> entry, not a failed call."]],
+  codes:[["200","ok even when everything was skipped"],["401","session invalid"],["422","malformed body"]],
+  note:["Cost scales linearly, and there is no pagination.","Omitting source_ids fires at least two Telegram calls per monitored source in one request. The response has no next_cursor, so a sweep cannot be paged."]},
+
+ {g:"Live Telegram search", m:"GET", p:"/api/sources/{source_id}/search", io:"tg",
+  s:"Live search inside one registered source, trusting its stored access status instead of re-probing every call.",
+  svc:"SearchService.channel_search_by_source", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["contacts.resolveUsername","messages.search"],
+  tables:["telegram_sources","audit_logs"],
+  params:["q","limit","cursor","sender_username","from_date","to_date","media_type","include_raw"],
+  steps:[["Load the source; reject bots with 422 before any Telegram call.","db"],
+         ["Stored status must be searchable, else <b>403 without contacting Telegram</b>.","db"],
+         ["Resolve the entity and run Telegram's own search on it.","tg"],
+         ["<code>sender_username</code> and <code>media_type</code> are applied natively by Telegram.","tg"]],
+  codes:[["200","ok"],["403","JOIN_REQUIRED / JOIN_PENDING / ACCESS_DENIED"],["404","unknown source"],["422","bot, or bad query"],["429","FLOOD_WAIT"]],
+  note:["An inaccessible source is refused, never answered with an empty list.","'No matches' and 'you cannot read this' must not look alike."]},
+
+ {g:"Live Telegram search", m:"GET", p:"/api/telegram/channels/{channel_id}/search", io:"tg",
+  s:"Live search inside an arbitrary channel that is not registered. Probes access afresh on every call.",
+  svc:"SearchService.channel_search_by_identifier", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP],
+  rpc:["contacts.resolveUsername","messages.getHistory (probe)","messages.search"],
+  tables:["audit_logs"],
+  steps:[["No stored state to trust, so it runs a full live access probe first.","tg"],
+         ["Bot? 422. Not readable? 403 or 404 carrying the probe's own reason."],
+         ["Then the actual search.","tg"]],
+  codes:[["200","ok"],["403","not accessible"],["404","no such entity"],["422","bot or bad query"],["429","FLOOD_WAIT"]],
+  note:["Two extra round trips, every single call.","For a channel you query more than once, register it and use <code>GET /api/sources/{id}/search</code> — that path skips the re-probe."]},
+
+ {g:"Live Telegram search", m:"POST", p:"/api/telegram/search/results/save", io:"tg",
+  s:"Promotes one search result into stored data. This is the only path by which a search result ever reaches the database.",
+  svc:"SearchService.save_search_result", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["contacts.resolveUsername","messages.getMessages (by id)"],
+  tables:["telegram_sources","telegram_messages","telegram_media","audit_logs"],
+  body:'{ "identifier": "@examplechannel", "telegram_message_id": 72697 }',
+  steps:[["Registers the source if it is new — a full registration with an access probe.","tg"],
+         ["Source must be readable, else 403."],
+         ["<b>Re-fetches the message live from Telegram</b> rather than trusting the client's copy.","tg"],
+         ["Writes it through the same evidence-preserving path monitoring uses.","db"],
+         ["Deliberately does <b>not</b> touch the monitoring checkpoint — that would make the collector skip everything in between."]],
+  codes:[["201","saved, or already present (inserted:false)"],["403","not readable"],["404","message gone"],["422","bad identifier"]],
+  note:["It has a side effect.","If the identifier is not yet registered, this creates a source row and probes access. It is not a pure 'save'."]},
+
+ /* ---------------- discovery ---------------- */
+ {g:"Discovery", m:"GET", p:"/api/telegram/channels/search", io:"tg",
+  s:"Finds candidate channels and groups by keyword. Returns channels, not messages.",
+  svc:"SearchService.discover_channels", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP],
+  rpc:["contacts.search"],
+  tables:["audit_logs"],
+  params:["q","limit"],
+  steps:[["One bounded Telegram call.","tg"],
+         ["Keeps channels and groups, de-duplicated by id."],
+         ["Derives a <b>coarse</b> access hint from flags already in the response — no extra RPC per result."]],
+  codes:[["200","ok"],["401","session invalid"],["429","FLOOD_WAIT"]],
+  note:["No pagination exists, and the access status is a guess.","<code>contacts.search</code> has no offset parameter, so <code>has_more</code> is always false. Confirm access with <code>POST /api/sources</code> before trusting it."]},
+
+ {g:"Discovery", m:"POST", p:"/api/telegram/channels/{telegram_id}/register", io:"tg",
+  s:"Registers a discovered channel as a source. A thin wrapper over the same path as POST /api/sources.",
+  svc:"SourceService.register_source", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["contacts.resolveUsername","messages.getHistory (limit 1)"],
+  tables:["telegram_sources","telegram_entities","audit_logs"],
+  params:["monitoring_enabled (query parameter, not a body field)"],
+  steps:[["Identical registration, dedup and access-probe path as <code>POST /api/sources</code>.","tg"],
+         ["A channel already registered by <code>@username</code> is correctly rejected with 409 by the entity-level dedup.","db"]],
+  codes:[["201","registered"],["409","already tracked"],["422","bad identifier"]],
+  note:["<code>monitoring_enabled</code> is a query parameter here.","Not a JSON body field — that catches people out."]},
+
+ {g:"Discovery", m:"POST", p:"/api/telegram/discovery/extract-links", io:"tg",
+  s:"Scans free text for Telegram links and reports each one's live access state. A read-only preview.",
+  svc:"SourceService.discover_linked_channels", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["contacts.resolveUsername (per candidate)","messages.getHistory (per candidate)"],
+  tables:["telegram_sources (read)","audit_logs"],
+  body:'{ "text": "join us at https://t.me/examplechannel" }',
+  steps:[["Finds http(s) URLs by regex and parses them with <code>urllib</code>."],
+         ["Only <code>t.me</code> and <code>telegram.me</code> count as Telegram. Everything else is discarded — <b>never fetched</b>."],
+         ["Capped at <b>20 candidates</b> per call."],
+         ["One live access probe per candidate.","tg"],
+         ["Registers nothing, joins nothing, monitors nothing."]],
+  codes:[["200","ok, possibly empty"],["422","text missing"]],
+  note:["Up to 20 live probes in one request.","And this path is not covered by the search concurrency cap. Use it on single messages, not in a loop over a corpus."]},
+
+ /* ---------------- bots & invites ---------------- */
+ {g:"Bots & invites", m:"POST", p:"/api/telegram/bots/{source_id}/start", io:"tg",
+  s:"Sends one /start to a registered bot, waits for its reply, and registers any Telegram links it contains as dormant sources.",
+  svc:"BotService.start_bot", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["messages.sendMessage (\"/start\")","messages.getHistory (poll for the reply)"],
+  tables:["telegram_sources","audit_logs"],
+  steps:[["Source must exist and be <code>source_type == 'bot'</code>, else 404 or 422.","db"],
+         ["Sends exactly one <code>/start</code>. <b>The only message this service ever sends.</b>","tg"],
+         ["Polls for the reply, bounded by BOT_START_TIMEOUT_SECONDS. Returns as soon as it arrives.","tg"],
+         ["Scans the reply text and inline button URLs for Telegram links only. Callback buttons are surfaced but <b>never executed</b>."],
+         ["Capped at 10 links; each is registered <b>dormant</b> — monitoring off, never auto-joined.","db"]],
+  codes:[["200","including status timed_out or failed"],["404","no such source"],["422","not a bot"]],
+  note:["Unauthenticated outbound messaging.","Repeated calls send repeated /start messages with no cooldown. That is visible activity on the account."]},
+
+ {g:"Bots & invites", m:"POST", p:"/api/telegram/invites/join", io:"tg",
+  s:"Joins, or requests to join, using a raw invite link. Not for plain usernames.",
+  svc:"SourceService.join_by_invite", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["messages.checkChatInvite","messages.importChatInvite"],
+  tables:["telegram_sources","telegram_access_requests","audit_logs"],
+  body:'{ "identifier": "https://t.me/+AbCdEfGhIjKlM" }',
+  steps:[["Must normalize to an invite hash, else 422."],
+         ["Registers the source (dormant) and probes the invite.","tg"],
+         ["Already accessible → <code>already_member</code>, <b>no join RPC sent at all</b>."],
+         ["Already pending → <code>already_pending</code>, no duplicate request."],
+         ["Otherwise submit once → <code>joined</code> or <code>pending_approval</code>.","tg"]],
+  codes:[["200","every join outcome, including failed"],["422","not an invite link"]],
+  note:["This changes the account's real-world membership.","Rapid repeated joins are the most common trigger of Telegram account restrictions — and this endpoint is unauthenticated and unthrottled."]},
+
+ /* ---------------- backfill ---------------- */
+ {g:"Backfill", m:"POST", p:"/api/sources/{source_id}/backfill", io:"tg",
+  s:"Queues a background job that walks backward into a source's history. Returns immediately with a job id.",
+  svc:"BackfillService.start_backfill", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.SCHED,L.TG,L.MTP,L.REPO,L.DB],
+  rpc:["contacts.resolveUsername","messages.getHistory (backward walk)"],
+  tables:["backfill_jobs","telegram_messages","telegram_media","audit_logs"],
+  body:'{ "limit": 500, "from_date": "2026-01-01T00:00:00Z" }',
+  steps:[["Access must be positively verified, else 409."],
+         ["Insert the job as PENDING, commit, return <b>202</b> straight away.","db"],
+         ["A fire-and-forget <code>asyncio</code> task then runs in the same process.","tg"],
+         ["It walks history <b>backward</b>, resuming from the job's own checkpoint.","tg"],
+         ["Advances <code>checkpoint_message_id</code> (the oldest id seen) — it <b>never</b> touches the forward monitoring checkpoint.","db"]],
+  codes:[["202","queued"],["404","no such source"],["409","access not verified"]],
+  note:["Jobs do not survive a restart.","There is no startup sweep and no cancel endpoint, so a killed job stays RUNNING forever. Recovery is to start a new one, which resumes safely from the checkpoint."]},
+
+ {g:"Backfill", m:"GET", p:"/api/sources/{source_id}/backfill", io:"db",
+  s:"Lists backfill jobs for one source, newest first, capped at 20.",
+  svc:"BackfillService.list_backfill_jobs", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["backfill_jobs"],
+  steps:[["Select by source, ordered by id descending.","db"]],
+  codes:[["200","ok, empty array for an unknown source"]]},
+
+ {g:"Backfill", m:"GET", p:"/api/sources/{source_id}/backfill/{job_id}", io:"db",
+  s:"Polls one backfill job's progress. This is how you follow a 202.",
+  svc:"BackfillService.get_backfill_job", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["backfill_jobs"],
+  steps:[["Looks up by job id <b>and</b> source id together.","db"],
+         ["Watch <code>status</code>, <code>messages_inserted</code> and <code>checkpoint_message_id</code>."]],
+  codes:[["200","ok"],["404","wrong job or source"]]},
+
+ /* ---------------- notifications ---------------- */
+ {g:"Notifications", m:"GET", p:"/api/notifications", io:"db",
+  s:"Reads persisted state-change events: access granted, access rejected, collection error.",
+  svc:"NotificationService.list_notifications", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["notifications"],
+  params:["limit","offset","unread_only"],
+  steps:[["Select ordered by id descending.","db"]],
+  codes:[["200","ok"]],
+  note:["Polling is the only delivery mechanism today.","The dispatch registry exists but no websocket, webhook or email provider is registered, so notifications simply accumulate here."]},
+
+ {g:"Notifications", m:"POST", p:"/api/notifications/{notification_id}/read", io:"db",
+  s:"Marks one notification read.",
+  svc:"NotificationService.mark_read", layers:[L.CLIENT,L.ROUTER,L.SERVICE,L.REPO,L.DB],
+  tables:["notifications"],
+  steps:[["Sets <code>is_read = true</code> and <b>flushes</b>.","db"],
+         ["Returns 200 showing <code>is_read: true</code>."],
+         ["Session closes, transaction <b>rolls back</b>, flag lost.","db"]],
+  codes:[["200","returned, but not saved"],["404","no such notification"]],
+  bug:["Confirmed defect: the read flag does not persist.","Same root cause as PATCH /api/sources — flush without commit. In practice <code>?unread_only=true</code> keeps returning the same notification forever. One-line fix."]}
+];
+
+const LIFECYCLE = [
+  {t:"Authenticate once",  p:"POST /api/telegram/auth/send-code",        d:"Three-step login; the session file is reused on every restart."},
+  {t:"Register a source",  p:"POST /api/sources",                        d:"Resolves and probes access immediately."},
+  {t:"Check real access",  p:"GET /api/sources/{source_id}/access-status",d:"Decides whether you can skip ahead or must request access."},
+  {t:"Request access",     p:"POST /api/sources/{source_id}/request-access",d:"Private sources only. One request, ever."},
+  {t:"Start monitoring",   p:"POST /api/sources/{source_id}/monitoring/start",d:"The step that actually starts collection."},
+  {t:"Search or backfill", p:"GET /api/messages",                        d:"Read what was collected, or query Telegram live."}
+];
+
+/* ---------- layer trace diagram ---------- */
+const NODES = [
+  {id:L.CLIENT, x:20,  y:16, w:150, h:44, t:"HTTP client",     s:"curl / Postman"},
+  {id:L.ROUTER, x:20,  y:82, w:150, h:44, t:"FastAPI router",  s:"app/api"},
+  {id:L.SERVICE,x:20,  y:148,w:150, h:44, t:"Service layer",   s:"app/services"},
+  {id:L.SCHED,  x:20,  y:214,w:150, h:44, t:"Background task", s:"asyncio / APScheduler"},
+  {id:L.TG,     x:250, y:148,w:150, h:44, t:"Telegram layer",  s:"app/telegram"},
+  {id:L.MTP,    x:250, y:214,w:150, h:44, t:"Telegram MTProto",s:"Telethon RPC"},
+  {id:L.REPO,   x:250, y:16, w:150, h:44, t:"Repository layer",s:"SQLAlchemy"},
+  {id:L.DB,     x:250, y:82, w:150, h:44, t:"SQLite",          s:"+ raw evidence JSON"}
+];
+const EDGES = [
+  {from:L.CLIENT, to:L.ROUTER,  d:"M95 60 L95 82",    lx:101, ly:75,  l:"request", kind:"on"},
+  {from:L.ROUTER, to:L.SERVICE, d:"M95 126 L95 148",  lx:101, ly:141, l:"validated", kind:"on"},
+  {from:L.SERVICE,to:L.SCHED,   d:"M95 192 L95 214",  lx:101, ly:207, l:"queues", kind:"on"},
+  {from:L.SERVICE,to:L.TG,      d:"M170 170 L245 170",lx:180, ly:164, l:"operation", kind:"tg"},
+  {from:L.TG,     to:L.MTP,     d:"M325 192 L325 214",lx:331, ly:207, l:"RPC", kind:"tg"},
+  {from:L.SERVICE,to:L.REPO,    d:"M170 160 L210 160 L210 38 L245 38", lx:205, ly:104, l:"persist", kind:"db", anchor:"end"},
+  {from:L.REPO,   to:L.DB,      d:"M325 60 L325 82",  lx:331, ly:75,  l:"SQL", kind:"db"}
+];
+
+function traceSvg(){
+  const n = NODES.map(o=>`
+    <g class="node" data-node="${o.id}">
+      <rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" rx="3"/>
+      <text x="${o.x+o.w/2}" y="${o.y+21}" text-anchor="middle">${o.t}</text>
+      <text x="${o.x+o.w/2}" y="${o.y+35}" text-anchor="middle" class="sub">${o.s}</text>
+    </g>`).join("");
+  const e = EDGES.map((o,i)=>`
+    <path class="edge" data-edge="${i}" d="${o.d}" marker-end="url(#tar)"/>
+    <text class="edge-label" data-elabel="${i}" x="${o.lx}" y="${o.ly}"${o.anchor?` text-anchor="${o.anchor}"`:""}>${o.l}</text>`).join("");
+  return `<svg class="trace" viewBox="0 0 420 276" role="img" id="traceSvg"
+      aria-label="Layer trace: HTTP client to FastAPI router to service layer, which reaches the Telegram layer and MTProto, the repository layer and SQLite, or a background task.">
+    <defs><marker id="tar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+      orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+    <g color="var(--muted)">${e}</g>${n}</svg>`;
+}
+
+/* ---------- render ---------- */
+const idxEl = document.getElementById("index");
+const detEl = document.getElementById("detail");
+const railEl = document.getElementById("rail");
+const key = ep => ep.m + " " + ep.p;
+
+railEl.innerHTML = LIFECYCLE.map((s,i)=>`
+  <button class="step" data-goto="${s.p}">
+    <span class="n">STEP ${i+1}</span>
+    <span class="t">${s.t}</span>
+    <span class="p">${s.p}</span>
+  </button>`).join("");
+
+let html = "", lastG = null;
+EP.forEach((ep,i)=>{
+  if(ep.g !== lastG){ html += `<div class="grp">${ep.g}</div>`; lastG = ep.g; }
+  html += `<button class="ep" data-i="${i}" aria-current="false">
+      <span class="verb ${ep.m}">${ep.m}</span>
+      <span class="path">${ep.p}</span>
+      <span class="dot ${ep.io}" title="${ep.io==='tg'?'calls Telegram':ep.io==='db'?'local database only':'no I/O'}"></span>
+    </button>`;
+});
+idxEl.innerHTML = html;
+
+function ioLabel(io){
+  return io==="tg" ? ["tg","Calls Telegram"] : io==="db" ? ["db","Local database only"] : ["none","No I/O"];
+}
+
+function render(i){
+  const ep = EP[i];
+  const [ioc, iot] = ioLabel(ep.io);
+  const steps = ep.steps.map(s=>`<li class="${s[1]||""}">${s[0]}</li>`).join("");
+
+  detEl.innerHTML = `
+    <span class="d-verb">${ep.m}</span>
+    <div class="d-path">${ep.p}</div>
+    <p class="d-sum">${ep.s}</p>
+    <div class="tags">
+      <span class="tag ${ioc}">${iot}</span>
+      <span class="tag">${ep.g}</span>
+      <span class="tag mono">${ep.svc}</span>
+    </div>
+
+    <div class="sec">
+      <h4>Path through the layers</h4>
+      <figure>${traceSvg()}
+        <figcaption>Lit boxes are the layers this request actually touches.
+          ${ep.io==="tg" ? "Amber marks the hop that reaches Telegram and spends the account's rate budget."
+            : ep.io==="db" ? "Green only — this request never reaches Telegram, so it is free and unlimited."
+            : "Neither Telegram nor the database is touched."}</figcaption>
+      </figure>
+    </div>
+
+    <div class="sec">
+      <h4>What happens inside</h4>
+      <ol class="steps">${steps}</ol>
+    </div>
+
+    ${ep.body ? `<div class="sec"><h4>Request body</h4>
+      <div class="chips"><span class="chip">${ep.body.replace(/</g,"&lt;")}</span></div></div>` : ""}
+
+    ${ep.params ? `<div class="sec"><h4>Parameters</h4>
+      <div class="chips">${ep.params.map(p=>`<span class="chip">${p}</span>`).join("")}</div></div>` : ""}
+
+    ${ep.rpc ? `<div class="sec"><h4>Telegram RPCs issued</h4>
+      <div class="chips">${ep.rpc.map(r=>`<span class="chip tg">${r.replace(/"/g,"&quot;")}</span>`).join("")}</div></div>` : ""}
+
+    ${ep.tables ? `<div class="sec"><h4>Database tables touched</h4>
+      <div class="chips">${ep.tables.map(t=>`<span class="chip db">${t}</span>`).join("")}</div></div>` : ""}
+
+    <div class="sec">
+      <h4>Status codes</h4>
+      <div class="codes">${ep.codes.map(c=>{
+        const cls = c[0][0]==="2" ? "ok" : "err";
+        return `<span class="code-pill ${cls}"><b>${c[0]}</b> &nbsp;${c[1]}</span>`;
+      }).join("")}</div>
+    </div>
+
+    ${ep.bug ? `<div class="note bug"><b>${ep.bug[0]}</b>${ep.bug[1]}</div>` : ""}
+    ${ep.note ? `<div class="note"><b>${ep.note[0]}</b>${ep.note[1]}</div>` : ""}
+  `;
+
+  const active = new Set(ep.layers);
+  detEl.querySelectorAll("[data-node]").forEach(g=>{
+    const id = g.dataset.node;
+    if(!active.has(id)) return;
+    g.classList.add(id===L.MTP||id===L.TG ? "tg-on" : (id===L.DB||id===L.REPO ? "db-on" : "on"));
+  });
+  EDGES.forEach((e,ix)=>{
+    if(!active.has(e.from) || !active.has(e.to)) return;
+    detEl.querySelector(`[data-edge="${ix}"]`).classList.add(e.kind==="tg"?"tg-on":e.kind==="db"?"db-on":"on");
+    detEl.querySelector(`[data-elabel="${ix}"]`).classList.add("on");
+  });
+
+  idxEl.querySelectorAll(".ep").forEach(b=>b.setAttribute("aria-current", b.dataset.i===String(i)));
+}
+
+idxEl.addEventListener("click", e=>{
+  const b = e.target.closest(".ep");
+  if(b) render(Number(b.dataset.i));
+});
+railEl.addEventListener("click", e=>{
+  const b = e.target.closest(".step");
+  if(!b) return;
+  const i = EP.findIndex(ep=>ep.p === b.dataset.goto);
+  if(i>=0){
+    render(i);
+    idxEl.querySelector(`.ep[data-i="${i}"]`).scrollIntoView({block:"center", behavior:"smooth"});
+    document.querySelector(".console").scrollIntoView({block:"start", behavior:"smooth"});
+  }
+});
+
+render(EP.findIndex(e=>e.p==="/api/sources" && e.m==="POST"));
+</script>

@@ -1,0 +1,28 @@
+# Secrets
+.env
+
+# Telegram session files - treat like credentials
+*.session
+*.session-journal
+
+# Database + collected data
+data/
+*.db
+*.db-journal
+
+# Retrieved message content from the archived proof-of-concept CLI - real
+# scraped Telegram data, never committed (carried over from the PoC's own
+# .gitignore when it was folded in under poc/).
+poc/output/*.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
