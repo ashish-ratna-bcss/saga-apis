@@ -1,0 +1,67 @@
+# Production-shaped stack: FastAPI (api) + PostgreSQL + worker(s), no
+# Kubernetes, no Redis -- Postgres is both the source of truth and the job
+# queue (SELECT ... FOR UPDATE SKIP LOCKED, see app/job_queue.py), which is
+# the whole reason this stays a 3-service compose file instead of 4+.
+#
+# Scale workers with: docker compose up --scale worker=3
+#
+# SearxNG (public_web adapter) is optional external infra, not included here
+# -- see README "Optional but recommended -- self-host SearxNG" for the
+# `docker run` + JSON-API-enable steps. Once running, point both api and
+# worker at it with OSINT_SEARXNG_URL (e.g. http://host.docker.internal:8080
+# if it's a standalone container outside this compose network).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: osint
+      POSTGRES_PASSWORD: osint_dev_pw
+      POSTGRES_DB: osint
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"  # host-side convenience only; api/worker reach it internally as postgres:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osint"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      OSINT_DATABASE_URL: postgresql+psycopg://osint:osint_dev_pw@postgres:5432/osint
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: .
+    command: ["uvicorn", "osint_app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      OSINT_DATABASE_URL: postgresql+psycopg://osint:osint_dev_pw@postgres:5432/osint
+      # OSINT_SEARXNG_URL: http://host.docker.internal:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build: .
+    command: ["python", "-m", "osint_app.worker_main"]
+    environment:
+      OSINT_DATABASE_URL: postgresql+psycopg://osint:osint_dev_pw@postgres:5432/osint
+      # OSINT_SEARXNG_URL: http://host.docker.internal:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:

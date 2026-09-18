@@ -1,0 +1,12 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+# searxng-src/ is vendored third-party source (see scripts/setup_searxng.sh),
+# not this project's code -- never ours to lint or fix.
+extend-exclude = ["searxng-src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# E501: line length (handled by line-length above, not worth hard-wrapping evidence/query strings)
+# B008: Depends(...) as a default arg is FastAPI's documented DI pattern, not a bug
+ignore = ["E501", "B008"]

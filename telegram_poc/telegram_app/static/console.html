@@ -1,0 +1,1142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telegram Service Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2317505f'/%3E%3Cpath d='M3 8.5l3.2 2.6L13 4.8' stroke='%23fff' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --ground:#eef2f3; --surface:#fff; --surface-2:#f5f8f9; --surface-3:#eaf0f2;
+  --ink:#101a1f; --ink-2:#3d505a; --muted:#667c87;
+  --line:#d3dde1; --line-soft:#e4ebee;
+  --petrol:#17505f; --petrol-soft:#dbe8ec; --petrol-ink:#0d3742;
+  --tg:#a2560a; --tg-soft:#fbeedd;
+  --db:#3d6b1f; --db-soft:#e6f0dc;
+  --warn:#8a6100; --warn-soft:#fbf1d6;
+  --danger:#a52a1f; --danger-soft:#fbe9e7;
+  --none:#66788a; --none-soft:#e6eaee;
+  --on-accent:#ffffff;
+  --shadow:0 1px 2px rgba(16,26,31,.06),0 10px 28px -16px rgba(16,26,31,.28);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0c1418; --surface:#131e23; --surface-2:#18262c; --surface-3:#1d2f36;
+    --ink:#e8f0f2; --ink-2:#adc0c8; --muted:#7f97a1;
+    --line:#274049; --line-soft:#1d3038;
+    --petrol:#7cc6da; --petrol-soft:#173038; --petrol-ink:#c8e8f2;
+    --tg:#e9a447; --tg-soft:#33240f;
+    --db:#94c96a; --db-soft:#1e2d14;
+    --warn:#e3bd5c; --warn-soft:#2f2510;
+    --danger:#f08a7c; --danger-soft:#37170f;
+    --none:#8ea3b0; --none-soft:#1e2a31;
+    --on-accent:#0c1418;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -16px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0c1418; --surface:#131e23; --surface-2:#18262c; --surface-3:#1d2f36;
+  --ink:#e8f0f2; --ink-2:#adc0c8; --muted:#7f97a1;
+  --line:#274049; --line-soft:#1d3038;
+  --petrol:#7cc6da; --petrol-soft:#173038; --petrol-ink:#c8e8f2;
+  --tg:#e9a447; --tg-soft:#33240f;
+  --db:#94c96a; --db-soft:#1e2d14;
+  --warn:#e3bd5c; --warn-soft:#2f2510;
+  --danger:#f08a7c; --danger-soft:#37170f;
+  --none:#8ea3b0; --none-soft:#1e2a31;
+  --on-accent:#0c1418;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -16px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.5}
+code,.mono,input,select,textarea,pre{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;margin:0}
+
+/* ---------- shell ---------- */
+.app{display:grid;grid-template-rows:auto 1fr;height:100vh}
+header{background:var(--surface);border-bottom:1px solid var(--line);padding:10px 16px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+.brand h1{font-size:18px;letter-spacing:-.01em}
+.brand .v{font-size:11px;color:var(--muted);font-family:"IBM Plex Mono",monospace}
+.baseurl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.baseurl input{width:190px}
+
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;
+  font-size:12px;font-weight:600;border:1px solid transparent;white-space:nowrap}
+.pill .dot{width:7px;height:7px;border-radius:50%;flex:none;background:currentColor}
+.pill.ok{background:var(--db-soft);color:var(--db)}
+.pill.bad{background:var(--danger-soft);color:var(--danger)}
+.pill.wait{background:var(--warn-soft);color:var(--warn)}
+.pill.idle{background:var(--none-soft);color:var(--none)}
+.pill.tg{background:var(--tg-soft);color:var(--tg)}
+
+.main{display:grid;grid-template-columns:1fr 400px;overflow:hidden}
+@media (max-width:1080px){.main{grid-template-columns:1fr}.wire{display:none}}
+.work{overflow-y:auto;padding:16px 18px 40px}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap}
+.tab{background:none;border:0;border-bottom:2px solid transparent;padding:8px 13px;
+  font:inherit;font-weight:600;font-size:13.5px;color:var(--muted);cursor:pointer}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--petrol);border-bottom-color:var(--petrol)}
+.tab:focus-visible{outline:2px solid var(--petrol);outline-offset:-2px}
+.panel[hidden]{display:none}
+
+/* ---------- cards / forms ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:5px;
+  padding:14px 16px;margin-bottom:14px;box-shadow:var(--shadow)}
+.card > h2{font-size:15px;margin-bottom:3px}
+.card > .sub{color:var(--muted);font-size:12.5px;margin:0 0 12px}
+.card > .sub code{font-size:11.5px}
+
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+input,select,textarea{background:var(--surface-2);color:var(--ink);border:1px solid var(--line);
+  border-radius:3px;padding:6px 8px;font-size:13px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--petrol);outline-offset:-1px;border-color:var(--petrol)}
+input[type=checkbox]{width:15px;height:15px;accent-color:var(--petrol)}
+.f.chk{flex-direction:row;align-items:center;gap:6px;padding-bottom:6px}
+.f.chk label{text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);font-weight:400}
+.grow{flex:1;min-width:150px}
+
+button.btn{font:inherit;font-weight:600;font-size:13px;padding:6px 12px;border-radius:3px;
+  border:1px solid var(--petrol);background:var(--petrol);color:var(--on-accent);
+  cursor:pointer;white-space:nowrap}
+button.btn:hover{filter:brightness(1.08)}
+button.btn:focus-visible{outline:2px solid var(--petrol);outline-offset:2px}
+button.btn[disabled]{opacity:.4;cursor:not-allowed;filter:none}
+button.btn.ghost{background:none;color:var(--petrol);border-color:var(--line)}
+button.btn.ghost:hover{background:var(--petrol-soft)}
+button.btn.warn{background:var(--tg);border-color:var(--tg);color:var(--on-accent)}
+button.btn.danger{background:none;color:var(--danger);border-color:var(--danger)}
+button.btn.danger:hover{background:var(--danger-soft)}
+button.btn.sm{padding:3px 8px;font-size:12px}
+
+/* ---------- tables ---------- */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;background:var(--surface-3);color:var(--petrol);font-size:11px;
+  letter-spacing:.07em;text-transform:uppercase;padding:7px 10px;border-bottom:1px solid var(--line);
+  position:sticky;top:0;white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--surface-2)}
+/* selection uses a rail + neutral tint, not petrol-soft: the MONITORING status
+   pill is petrol-soft too and would vanish into a selected row. */
+tbody tr[aria-selected="true"]{background:var(--surface-3)}
+tbody tr[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--petrol)}
+td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.id{font-family:"IBM Plex Mono",monospace;color:var(--muted)}
+.trunc{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.empty{padding:22px;text-align:center;color:var(--muted);font-size:13px}
+
+/* status pills for access_status */
+.st{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;padding:2px 7px;
+  border-radius:3px;white-space:nowrap;background:var(--none-soft);color:var(--none)}
+.st.good{background:var(--db-soft);color:var(--db)}
+.st.pend{background:var(--warn-soft);color:var(--warn)}
+.st.bad{background:var(--danger-soft);color:var(--danger)}
+.st.live{background:var(--petrol-soft);color:var(--petrol)}
+
+/* ---------- source detail ---------- */
+.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px 16px;
+  margin-top:10px;font-size:12.5px}
+.meta div span{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);font-weight:600}
+.meta div b{font-family:"IBM Plex Mono",monospace;font-weight:500;word-break:break-all}
+
+.hintbox{border-left:3px solid var(--tg);background:var(--tg-soft);padding:8px 11px;
+  border-radius:0 3px 3px 0;font-size:12.5px;margin-top:10px}
+.hintbox b{display:block}
+
+/* ---------- results ---------- */
+.res{margin-top:12px}
+.res-hd{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.res-hd h3{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.warnbox{background:var(--warn-soft);border-left:3px solid var(--warn);padding:7px 10px;
+  font-size:12.5px;border-radius:0 3px 3px 0;margin-bottom:8px}
+.msg{border:1px solid var(--line);border-radius:4px;padding:9px 11px;margin-bottom:7px;background:var(--surface)}
+.msg-hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-bottom:4px}
+.msg-hd .who{color:var(--ink);font-weight:600}
+.msg-body{font-size:13.5px;white-space:pre-wrap;word-break:break-word;max-height:8em;overflow:auto}
+.msg-ft{margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tagx{font-family:"IBM Plex Mono",monospace;font-size:10.5px;padding:1px 6px;border-radius:3px;
+  background:var(--surface-2);border:1px solid var(--line-soft);color:var(--muted)}
+.tagx.pub{background:var(--db-soft);color:var(--db);border-color:transparent}
+.tagx.scoped{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+a{color:var(--petrol)}
+
+/* ---------- wire log ---------- */
+.wire{background:var(--surface);border-left:1px solid var(--line);display:grid;
+  grid-template-rows:auto 1fr;overflow:hidden}
+.wire-hd{padding:9px 13px;border-bottom:1px solid var(--line);display:flex;
+  align-items:center;justify-content:space-between;gap:8px}
+.wire-hd h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.wire-list{overflow-y:auto;padding:8px}
+.entry{border:1px solid var(--line-soft);border-left:3px solid var(--none);border-radius:3px;
+  margin-bottom:6px;background:var(--surface-2)}
+.entry.ok{border-left-color:var(--db)} .entry.err{border-left-color:var(--danger)}
+.entry summary{padding:6px 9px;cursor:pointer;display:flex;gap:7px;align-items:center;
+  font-size:11.5px;font-family:"IBM Plex Mono",monospace;list-style:none}
+.entry summary::-webkit-details-marker{display:none}
+.entry summary .st-code{font-weight:600;min-width:30px}
+.entry.ok .st-code{color:var(--db)} .entry.err .st-code{color:var(--danger)}
+.entry summary .m{color:var(--muted);min-width:44px}
+.entry summary .u{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.entry summary .ms{color:var(--muted)}
+.entry pre{margin:0;padding:8px 9px;border-top:1px solid var(--line-soft);font-size:11px;
+  line-height:1.45;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+/* origin mismatch banner - the one failure mode that looks like "server down" */
+.banner{border:1px solid var(--danger);border-left:4px solid var(--danger);background:var(--danger-soft);
+  border-radius:4px;padding:12px 15px;margin-bottom:14px}
+.banner h2{font-size:15px;color:var(--danger);margin-bottom:4px}
+.banner p{margin:0 0 8px;font-size:13px;color:var(--ink)}
+.banner .fixlink{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:14px;font-weight:600;
+  background:var(--surface);border:1px solid var(--danger);border-radius:3px;padding:6px 12px;
+  color:var(--danger);text-decoration:none}
+.banner .fixlink:hover{background:var(--danger);color:var(--surface)}
+.banner details{margin-top:9px;font-size:12.5px;color:var(--ink-2)}
+.banner summary{cursor:pointer;font-weight:600;color:var(--danger)}
+.banner details p{margin:6px 0 0;font-size:12.5px;color:var(--ink-2)}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:50;
+  background:var(--ink);color:var(--ground);padding:9px 16px;border-radius:4px;font-size:13px;
+  box-shadow:var(--shadow);max-width:80vw}
+.toast.err{background:var(--danger);color:#fff}
+.avatar { width: 32px; height: 32px; border-radius: 50%; vertical-align: middle; margin-right: 8px; object-fit: cover; }
+.avatar-thumb{cursor:pointer}
+.avatar-thumb:hover{outline:2px solid var(--petrol);outline-offset:1px}
+.avatar-thumb.loading{opacity:.5;cursor:wait;animation:avatar-pulse 1s ease-in-out infinite}
+@keyframes avatar-pulse{0%,100%{opacity:.35}50%{opacity:.8}}
+.photo-modal{position:fixed;inset:0;z-index:80;background:rgba(8,14,17,.78);
+  display:flex;align-items:center;justify-content:center;padding:32px}
+.photo-modal img{max-width:min(90vw,480px);max-height:80vh;border-radius:6px;box-shadow:var(--shadow);
+  background:var(--surface)}
+.photo-modal-close{position:absolute;top:18px;right:22px;width:36px;height:36px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);color:#fff;font-size:22px;
+  line-height:1;cursor:pointer}
+.photo-modal-close:hover{background:rgba(255,255,255,.2)}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="brand">
+    <h1>Telegram Service Console</h1>
+    <span class="v">v0.1.0</span>
+  </div>
+  <div class="baseurl">
+    <label for="base">API</label>
+    <input id="base" value="" spellcheck="false">
+  </div>
+  <span class="pill idle" id="connPill"><span class="dot"></span> checking…</span>
+  <button class="btn ghost sm" id="refreshAll">Refresh</button>
+  <button class="btn ghost sm" id="themeBtn" title="Toggle theme">Theme</button>
+</header>
+
+<div class="main">
+<div class="work">
+
+  <div class="banner" id="originWarn" hidden></div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true"  data-p="p-conn">Connection</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="p-src">Sources</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="p-search">Live search</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="p-msg">Stored messages</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="p-disc">Discovery &amp; bots</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="p-notif">Notifications</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="p-raw">Raw request</button>
+  </div>
+
+  <!-- ============ CONNECTION ============ -->
+  <section class="panel" id="p-conn">
+    <div class="card">
+      <h2>Telegram session</h2>
+      <p class="sub"><code>GET /api/telegram/status</code> — the real connection state. Everything that touches Telegram fails until this says authenticated.</p>
+      <div class="row">
+        <button class="btn" id="btnStatus">Check status</button>
+        <button class="btn ghost" id="btnHealth">Health &amp; ready</button>
+      </div>
+      <div class="meta" id="statusMeta"></div>
+    </div>
+
+    <div class="card">
+      <h2>Sign in</h2>
+      <p class="sub">Three steps, in order. Only needed once — the session file is reused on every restart. The code hash is held in server memory, so don't restart the service between steps.</p>
+      <div class="row">
+        <div class="f grow"><label for="authPhone">Phone (international)</label>
+          <input id="authPhone" placeholder="+15551234567" spellcheck="false"></div>
+        <button class="btn warn" id="btnSendCode">1 · Send code</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="f"><label for="authCode">Code from Telegram</label>
+          <input id="authCode" placeholder="12345" spellcheck="false" style="width:130px"></div>
+        <button class="btn warn" id="btnVerifyCode">2 · Verify code</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="f"><label for="authPw">2FA password (only if asked)</label>
+          <input id="authPw" type="password" placeholder="••••••••" style="width:180px"></div>
+        <button class="btn warn" id="btnVerifyPw">3 · Verify password</button>
+      </div>
+      <div class="hintbox"><b>These are real Telegram login calls.</b>
+        Sending a code repeatedly will get the account rate-limited by Telegram.</div>
+    </div>
+  </section>
+
+  <!-- ============ SOURCES ============ -->
+  <section class="panel" id="p-src" hidden>
+    <div class="card">
+      <h2>Register a source</h2>
+      <p class="sub"><code>POST /api/sources</code> — resolves the identifier and probes real access immediately. Accepts <code>@username</code>, a t.me link, an invite link, or a numeric id.</p>
+      <div class="row">
+        <div class="f grow"><label for="newIdent">Identifier</label>
+          <input id="newIdent" placeholder="@examplechannel" spellcheck="false"></div>
+        <div class="f chk"><input type="checkbox" id="newMon"><label for="newMon">Set monitoring flag</label></div>
+        <button class="btn" id="btnRegister">Register</button>
+      </div>
+      <div class="hintbox"><b>The flag alone does not start collection.</b>
+        A source is only collected once its status is <code>MONITORING</code>, which the Start monitoring button below sets.</div>
+    </div>
+
+    <div class="card">
+      <h2>Sources</h2>
+      <p class="sub">Click a row to select it. Available actions depend on the access state — buttons that would return 409 are disabled.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Identifier</th><th>Type</th><th>Access status</th><th>Mon.</th><th>Last msg</th><th>Collected</th></tr></thead>
+          <tbody id="srcRows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div id="srcDetail"></div>
+    </div>
+  </section>
+
+  <!-- ============ LIVE SEARCH ============ -->
+  <section class="panel" id="p-search" hidden>
+    <div class="card">
+      <h2>Global search <span class="pill tg" style="vertical-align:middle"><span class="dot"></span>live</span></h2>
+      <p class="sub"><code>GET /api/telegram/search/global</code> — hits Telegram on every call. Check <code>method_used</code> in the response: <code>searchPosts</code> is genuinely cross-channel, <code>searchGlobal</code> is scoped to this account.</p>
+      <div class="row">
+        <div class="f grow"><label for="gq">Query</label><input id="gq" placeholder="keyword"></div>
+        <div class="f"><label for="glimit">Limit</label><input id="glimit" type="number" value="20" min="1" max="100" style="width:80px"></div>
+        <div class="f"><label for="gmedia">Media</label>
+          <select id="gmedia"><option value="">any</option><option>photo</option><option>video</option>
+            <option>document</option><option>voice</option><option>audio</option></select></div>
+        <div class="f"><label for="gsort">Sort</label>
+          <select id="gsort"><option>date_desc</option><option>relevance</option></select></div>
+        <button class="btn warn" id="btnGlobal">Search Telegram</button>
+      </div>
+      <div class="res" id="globalRes"></div>
+    </div>
+
+    <div class="card">
+      <h2>Search inside one source <span class="pill tg" style="vertical-align:middle"><span class="dot"></span>live</span></h2>
+      <p class="sub"><code>GET /api/sources/{id}/search</code> — only sources with verified access appear here.</p>
+      <div class="row">
+        <div class="f"><label for="csrc">Source</label><select id="csrc" style="min-width:210px"></select></div>
+        <div class="f grow"><label for="cq">Query</label><input id="cq" placeholder="keyword"></div>
+        <div class="f"><label for="csender">From user</label><input id="csender" placeholder="username" style="width:120px"></div>
+        <div class="f"><label for="climit">Limit</label><input id="climit" type="number" value="20" min="1" max="100" style="width:80px"></div>
+        <button class="btn warn" id="btnChanSearch">Search</button>
+      </div>
+      <div class="res" id="chanRes"></div>
+    </div>
+
+    <div class="card">
+      <h2>Search an unregistered channel <span class="pill tg" style="vertical-align:middle"><span class="dot"></span>live</span></h2>
+      <p class="sub"><code>GET /api/telegram/channels/{id}/search</code> — probes access afresh every call, so it costs two extra round trips. Register the channel if you'll query it more than once.</p>
+      <div class="row">
+        <div class="f"><label for="aid">Channel</label><input id="aid" placeholder="@somechannel" spellcheck="false"></div>
+        <div class="f grow"><label for="aq">Query</label><input id="aq" placeholder="keyword"></div>
+        <div class="f"><label for="alimit">Limit</label><input id="alimit" type="number" value="20" min="1" max="100" style="width:80px"></div>
+        <button class="btn warn" id="btnAnySearch">Search</button>
+      </div>
+      <div class="res" id="anyRes"></div>
+    </div>
+  </section>
+
+  <!-- ============ STORED MESSAGES ============ -->
+  <section class="panel" id="p-msg" hidden>
+    <div class="card">
+      <h2>Stored messages <span class="pill ok" style="vertical-align:middle"><span class="dot"></span>local only</span></h2>
+      <p class="sub"><code>GET /api/messages</code> — reads what has already been collected. No Telegram traffic, no rate limits. Keyword is a case-insensitive substring; there is no AND/OR syntax.</p>
+      <div class="row">
+        <div class="f grow"><label for="mq">Keyword</label><input id="mq" placeholder="substring of the message text"></div>
+        <div class="f"><label for="msrc">Source</label><select id="msrc" style="min-width:190px"></select></div>
+        <div class="f"><label for="msender">Sender</label><input id="msender" placeholder="exact username" style="width:130px"></div>
+        <div class="f"><label for="mmedia">Media</label>
+          <select id="mmedia"><option value="">any</option><option>photo</option><option>video</option>
+            <option>document</option><option>audio</option><option>voice</option><option>sticker</option><option>other</option></select></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="f"><label for="mfrom">From date</label><input id="mfrom" type="date"></div>
+        <div class="f"><label for="mto">To date</label><input id="mto" type="date"></div>
+        <div class="f"><label for="mlimit">Limit</label><input id="mlimit" type="number" value="50" min="1" style="width:80px"></div>
+        <div class="f"><label for="moffset">Offset</label><input id="moffset" type="number" value="0" min="0" style="width:80px"></div>
+        <button class="btn" id="btnMsgSearch">Search stored</button>
+      </div>
+      <div class="res" id="msgRes"></div>
+    </div>
+  </section>
+
+  <!-- ============ DISCOVERY & BOTS ============ -->
+  <section class="panel" id="p-disc" hidden>
+    <div class="card">
+      <h2>Find channels <span class="pill tg" style="vertical-align:middle"><span class="dot"></span>live</span></h2>
+      <p class="sub"><code>GET /api/telegram/channels/search</code> — returns channels, not messages. The access status shown is a coarse hint, not the verified state.</p>
+      <div class="row">
+        <div class="f grow"><label for="dq">Keyword</label><input id="dq" placeholder="topic or name"></div>
+        <div class="f"><label for="dlimit">Limit</label><input id="dlimit" type="number" value="20" min="1" max="100" style="width:80px"></div>
+        <button class="btn warn" id="btnDiscover">Discover</button>
+      </div>
+      <div class="res" id="discRes"></div>
+    </div>
+
+    <div class="card">
+      <h2>Extract Telegram links from text <span class="pill tg" style="vertical-align:middle"><span class="dot"></span>live</span></h2>
+      <p class="sub"><code>POST /api/telegram/discovery/extract-links</code> — read-only preview. Non-Telegram URLs are classified and discarded, never fetched. Capped at 20 probes per call.</p>
+      <div class="f" style="margin-bottom:8px"><label for="dtext">Text to scan</label>
+        <textarea id="dtext" rows="3" placeholder="paste a message body containing t.me links"></textarea></div>
+      <button class="btn warn" id="btnExtract">Extract</button>
+      <div class="res" id="extractRes"></div>
+    </div>
+
+    <div class="card">
+      <h2>Join by invite link <span class="pill tg" style="vertical-align:middle"><span class="dot"></span>changes membership</span></h2>
+      <p class="sub"><code>POST /api/telegram/invites/join</code> — invite links only (<code>t.me/+hash</code>). For a plain username, register it and use Request access instead.</p>
+      <div class="row">
+        <div class="f grow"><label for="invite">Invite link</label><input id="invite" placeholder="https://t.me/+AbCdEf…" spellcheck="false"></div>
+        <button class="btn warn" id="btnJoin">Join</button>
+      </div>
+      <div class="hintbox"><b>This makes the account actually join.</b>
+        Rapid repeated joins are the most common trigger of Telegram account restrictions.</div>
+      <div class="res" id="joinRes"></div>
+    </div>
+
+    <div class="card">
+      <h2>Start a bot <span class="pill tg" style="vertical-align:middle"><span class="dot"></span>sends a message</span></h2>
+      <p class="sub"><code>POST /api/telegram/bots/{id}/start</code> — sends exactly one <code>/start</code> and reads the reply. Only sources whose type is <code>bot</code> are listed.</p>
+      <div class="row">
+        <div class="f"><label for="botsel">Bot source</label><select id="botsel" style="min-width:230px"></select></div>
+        <button class="btn warn" id="btnStartBot">Send /start</button>
+      </div>
+      <div class="res" id="botRes"></div>
+    </div>
+  </section>
+
+  <!-- ============ NOTIFICATIONS ============ -->
+  <section class="panel" id="p-notif" hidden>
+    <div class="card">
+      <h2>Notifications <span class="pill ok" style="vertical-align:middle"><span class="dot"></span>local only</span></h2>
+      <p class="sub"><code>GET /api/notifications</code> — access granted/rejected and collection errors. Polling is the only delivery mechanism; no webhook or websocket provider is registered.</p>
+      <div class="row">
+        <div class="f chk"><input type="checkbox" id="unreadOnly"><label for="unreadOnly">Unread only</label></div>
+        <button class="btn" id="btnNotif">Load</button>
+      </div>
+      <div class="hintbox"><b>Marking read does not persist.</b>
+        <code>POST /api/notifications/{id}/read</code> returns 200 but the change is rolled back — a known defect in the service, not in this console.</div>
+      <div class="res" id="notifRes"></div>
+    </div>
+  </section>
+
+  <!-- ============ RAW ============ -->
+  <section class="panel" id="p-raw" hidden>
+    <div class="card">
+      <h2>Raw request</h2>
+      <p class="sub">Anything not covered above. The path is appended to the API base URL.</p>
+      <div class="row">
+        <div class="f"><label for="rawM">Method</label>
+          <select id="rawM"><option>GET</option><option>POST</option><option>PATCH</option><option>DELETE</option></select></div>
+        <div class="f grow"><label for="rawP">Path</label>
+          <input id="rawP" value="/api/sources" spellcheck="false"></div>
+        <button class="btn" id="btnRaw">Send</button>
+      </div>
+      <div class="f" style="margin-top:10px"><label for="rawB">JSON body (POST/PATCH)</label>
+        <textarea id="rawB" rows="4" spellcheck="false" placeholder='{"identifier": "@example"}'></textarea></div>
+      <div class="res" id="rawRes"></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ============ WIRE LOG ============ -->
+<aside class="wire">
+  <div class="wire-hd">
+    <h2>Wire log</h2>
+    <div style="display:flex;gap:6px;align-items:center">
+      <span class="pill idle" id="reqCount"><span class="dot"></span>0 calls</span>
+      <button class="btn ghost sm" id="clearLog">Clear</button>
+    </div>
+  </div>
+  <div class="wire-list" id="wireList"></div>
+</aside>
+
+</div></div>
+
+<!-- ============ PHOTO PREVIEW MODAL ============ -->
+<div class="photo-modal" id="photoModal" hidden>
+  <button class="photo-modal-close" id="photoModalClose" aria-label="Close" type="button">&times;</button>
+  <img id="photoModalImg" alt="Real profile photo" />
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const el = (t,c,x) => { const n=document.createElement(t); if(c)n.className=c; if(x!==undefined)n.textContent=x; return n; };
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+
+/* ---------------- API layer ---------------- */
+const baseInput = $("#base");
+baseInput.value = location.protocol.startsWith("http") ? location.origin : "http://localhost:8000";
+const base = () => baseInput.value.replace(/\/+$/,"");
+let callCount = 0;
+
+async function api(method, path, body){
+  const url = base() + path;
+  const t0 = performance.now();
+  let res, data, netErr = null;
+  try{
+    res = await fetch(url, {
+      method,
+      headers: body !== undefined ? {"Content-Type":"application/json"} : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined
+    });
+    const text = await res.text();
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  }catch(e){
+    netErr = e.message || String(e);
+  }
+  const ms = Math.round(performance.now() - t0);
+  const status = netErr ? 0 : res.status;
+  logCall(method, path, status, ms, netErr ? {
+    network_error: netErr,
+    hint: isSameOrigin()
+      ? "Is the service running, and is the API base URL right?"
+      : "Cross-origin: the browser blocked the response because this page is not served by the API. The request may well have succeeded server-side - check the service log. Open " + ((apiOrigin() || "http://localhost:8000") + "/console") + " instead."
+  } : data);
+  return { ok: !netErr && res.ok, status, data, ms, netErr };
+}
+
+/* ---- origin guard -------------------------------------------------------
+   Every fetch fails identically when this page is not served by the API
+   itself: the browser blocks the response (no CORS headers) and reports only
+   "Failed to fetch", which reads like the server is down. The server log
+   tells the real story - a 405 on an OPTIONS preflight, or 200s whose
+   responses never reach this script. Detect it and say so plainly. */
+function apiOrigin(){
+  try { return new URL(base()).origin; } catch { return null; }
+}
+function isSameOrigin(){
+  return location.protocol.startsWith("http") && apiOrigin() === location.origin;
+}
+function checkOrigin(){
+  const box = $("#originWarn");
+  if(isSameOrigin()){ box.hidden = true; return true; }
+  const target = (apiOrigin() || "http://localhost:8000") + "/console";
+  const viaFile = !location.protocol.startsWith("http");
+  box.hidden = false;
+  box.innerHTML =
+    '<h2>This page must be opened from the API itself</h2>'+
+    '<p>' + (viaFile
+      ? 'You opened <code>console.html</code> as a local file, so the browser treats every request to the API as cross-origin and blocks the response.'
+      : 'This page is served from <code>'+esc(location.origin)+'</code> but the API is <code>'+esc(apiOrigin()||base())+'</code>. Different origins, so the browser blocks every response.') +
+    ' The service has no CORS middleware, so nothing here can work until the page and the API share an origin.</p>'+
+    '<a class="fixlink" href="'+esc(target)+'">Open '+esc(target)+'</a>'+
+    '<details><summary>Why not just enable CORS?</summary>'+
+    '<p>This API has no authentication. Permissive CORS would let any website you happen to visit drive it from your browser &mdash; joining channels, sending <code>/start</code>, or deleting collected data through your Telegram account. Serving the console from the app keeps it same-origin without opening that door.</p>'+
+    '<p>Note that <code>localhost</code> and <code>127.0.0.1</code> count as different origins, so use whichever one the address bar shows.</p>'+
+    '</details>';
+  return false;
+}
+
+/* human-readable message from either error envelope */
+function errText(r){
+  if(r.netErr){
+    if(!isSameOrigin())
+      return "Blocked by the browser: this page is not served by the API. Open " +
+             ((apiOrigin() || "http://localhost:8000") + "/console") + " instead.";
+    return "Cannot reach the API at " + base() + " — " + r.netErr;
+  }
+  const d = r.data;
+  if(d && d.error && d.error.message){
+    let m = d.error.code + ": " + d.error.message;
+    if(d.error.retry_after_seconds != null) m += " (retry after " + d.error.retry_after_seconds + "s)";
+    return m;
+  }
+  if(d && typeof d.detail === "string") return d.detail;
+  if(d && Array.isArray(d.detail)) return d.detail.map(x => (x.loc||[]).slice(1).join(".") + " " + x.msg).join("; ");
+  return "HTTP " + r.status;
+}
+
+function logCall(method, path, status, ms, data){
+  callCount++;
+  $("#reqCount").innerHTML = '<span class="dot"></span>' + callCount + (callCount===1?" call":" calls");
+  const cls = status===0 ? "err" : (status>=200 && status<300 ? "ok" : "err");
+  const d = el("details","entry "+cls);
+  const s = el("summary");
+  s.innerHTML = '<span class="st-code">'+(status||"ERR")+'</span>'+
+                '<span class="m">'+method+'</span>'+
+                '<span class="u">'+esc(path)+'</span>'+
+                '<span class="ms">'+ms+'ms</span>';
+  d.appendChild(s);
+  d.appendChild(el("pre", null, typeof data === "string" ? data : JSON.stringify(data, null, 2)));
+  const list = $("#wireList");
+  list.prepend(d);
+  while(list.children.length > 60) list.lastChild.remove();
+}
+
+let toastTimer;
+function toast(msg, isErr){
+  document.querySelectorAll(".toast").forEach(t=>t.remove());
+  const t = el("div","toast"+(isErr?" err":""), msg);
+  document.body.appendChild(t);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.remove(), 5200);
+}
+
+/* ---------------- tabs ---------------- */
+document.querySelectorAll(".tab").forEach(tab=>{
+  tab.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected", t===tab));
+    document.querySelectorAll(".panel").forEach(p=>p.hidden = p.id !== tab.dataset.p);
+  });
+});
+$("#themeBtn").addEventListener("click", ()=>{
+  const cur = document.documentElement.getAttribute("data-theme");
+  const dark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+});
+$("#clearLog").addEventListener("click", ()=>{ $("#wireList").innerHTML = ""; });
+
+/* ---------------- status ---------------- */
+const READABLE = ["PUBLIC_ACCESSIBLE","ACCESSIBLE","JOINED","MONITORING"];
+const stClass = s => READABLE.includes(s) ? (s==="MONITORING" ? "live" : "good")
+  : ["JOIN_REQUEST_REQUIRED","JOIN_REQUEST_PENDING","DISCOVERED"].includes(s) ? "pend"
+  : ["ACCESS_DENIED","NOT_FOUND","ERROR","JOIN_REQUEST_REJECTED","DISABLED"].includes(s) ? "bad" : "";
+
+async function loadStatus(){
+  const r = await api("GET","/api/telegram/status");
+  const p = $("#connPill");
+  if(!r.ok || !r.data){ p.className="pill bad"; p.innerHTML='<span class="dot"></span>unreachable'; $("#statusMeta").innerHTML=""; return; }
+  const d = r.data;
+  if(d.authenticated){ p.className="pill ok"; p.innerHTML='<span class="dot"></span>authenticated'; }
+  else if(d.session_invalid){ p.className="pill bad"; p.innerHTML='<span class="dot"></span>session invalid'; }
+  else if(d.connected){ p.className="pill wait"; p.innerHTML='<span class="dot"></span>connected, not signed in'; }
+  else { p.className="pill bad"; p.innerHTML='<span class="dot"></span>disconnected'; }
+  $("#statusMeta").innerHTML =
+    field("Connected", d.connected) + field("Authenticated", d.authenticated) +
+    field("Account id", d.account && d.account.id) + field("Username", d.account && d.account.username) +
+    field("Phone (masked)", d.account && d.account.phone) +
+    field("Session invalid", d.session_invalid) + field("Error", d.error);
+}
+const field = (k,v) => '<div><span>'+esc(k)+'</span><b>'+esc(v===null||v===undefined||v===""?"—":v)+'</b></div>';
+
+$("#btnStatus").addEventListener("click", loadStatus);
+$("#btnHealth").addEventListener("click", async ()=>{
+  await api("GET","/health"); const r = await api("GET","/ready");
+  if(r.ok) toast("Health ok · ready: " + r.data.status);
+});
+
+/* ---------------- auth ---------------- */
+$("#btnSendCode").addEventListener("click", async ()=>{
+  const phone = $("#authPhone").value.trim();
+  if(!phone) return toast("Enter the phone number first", true);
+  if(!confirm("Send a real Telegram login code to " + phone + "?")) return;
+  const r = await api("POST","/api/telegram/auth/send-code",{phone});
+  if(r.ok && r.data.ok) toast("Code sent. Enter it in step 2.");
+  else toast(r.data && r.data.error ? r.data.error : errText(r), true);
+});
+$("#btnVerifyCode").addEventListener("click", async ()=>{
+  const phone = $("#authPhone").value.trim(), code = $("#authCode").value.trim();
+  if(!phone || !code) return toast("Phone and code are both required", true);
+  const r = await api("POST","/api/telegram/auth/verify-code",{phone, code});
+  if(r.ok && r.data.ok){ toast("Signed in."); loadStatus(); }
+  else if(r.ok && r.data.requires_password) toast("2FA enabled — complete step 3.", true);
+  else toast(r.data && r.data.error ? r.data.error : errText(r), true);
+});
+$("#btnVerifyPw").addEventListener("click", async ()=>{
+  const password = $("#authPw").value;
+  if(!password) return toast("Enter the 2FA password", true);
+  const r = await api("POST","/api/telegram/auth/verify-password",{password});
+  $("#authPw").value = "";
+  if(r.ok && r.data.ok){ toast("Signed in."); loadStatus(); }
+  else toast(r.data && r.data.error ? r.data.error : errText(r), true);
+});
+
+/* ---------------- sources ---------------- */
+let SOURCES = [], selectedId = null;
+
+async function loadSources(){
+  const r = await api("GET","/api/sources?limit=200");
+  const tb = $("#srcRows");
+  if(!r.ok){ tb.innerHTML = '<tr><td colspan="7" class="empty">'+esc(errText(r))+'</td></tr>'; return; }
+  SOURCES = r.data || [];
+  if(!SOURCES.length){ tb.innerHTML = '<tr><td colspan="7" class="empty">No sources registered yet.</td></tr>'; }
+  else{
+    tb.innerHTML = SOURCES.map(s=>
+      '<tr data-id="'+s.id+'" aria-selected="'+(s.id===selectedId)+'">'+
+        '<td class="id">'+s.id+'</td>'+
+        '<td><div class="trunc" title="'+esc(s.identifier)+'">'+esc(s.title || s.identifier)+'</div>'+
+          (s.title ? '<div class="trunc" style="color:var(--muted);font-size:11.5px">'+esc(s.identifier)+'</div>' : '')+'</td>'+
+        '<td>'+esc(s.source_type)+'</td>'+
+        '<td><span class="st '+stClass(s.access_status)+'">'+esc(s.access_status)+'</span></td>'+
+        '<td>'+(s.monitoring_enabled ? "on" : "off")+'</td>'+
+        '<td class="num">'+(s.last_message_id ?? "—")+'</td>'+
+        '<td class="num">'+(s.last_collected_at ? new Date(s.last_collected_at).toLocaleString() : "—")+'</td>'+
+      '</tr>').join("");
+  }
+  fillSourceSelects();
+  if(selectedId != null && !SOURCES.some(s=>s.id===selectedId)){ selectedId = null; }
+  renderDetail();
+}
+
+$("#srcRows").addEventListener("click", e=>{
+  const tr = e.target.closest("tr[data-id]");
+  if(!tr) return;
+  selectedId = Number(tr.dataset.id);
+  document.querySelectorAll("#srcRows tr").forEach(r=>r.setAttribute("aria-selected", r===tr));
+  renderDetail();
+});
+
+function renderDetail(){
+  const box = $("#srcDetail");
+  const s = SOURCES.find(x=>x.id===selectedId);
+  if(!s){ box.innerHTML = ""; return; }
+  const readable = READABLE.includes(s.access_status);
+  const canJoin = ["JOIN_REQUEST_REQUIRED","ERROR"].includes(s.access_status);
+  box.innerHTML =
+    '<div class="meta">'+
+      field("Source id", s.id) + field("Telegram id", s.telegram_entity_id) +
+      field("Username", s.username) + field("Type", s.source_type) +
+      field("Access status", s.access_status) + field("Status reason", s.status_reason) +
+      field("Last probe", s.last_probe_status) + field("Probed at", s.last_probe_at ? new Date(s.last_probe_at).toLocaleString() : null) +
+    '</div>'+
+    '<div class="actions">'+
+      '<button class="btn ghost sm" data-a="check">Check access</button>'+
+      '<button class="btn warn sm" data-a="request"'+(canJoin?"":" disabled")+'>Request access</button>'+
+      '<button class="btn sm" data-a="start"'+(readable?"":" disabled")+'>Start monitoring</button>'+
+      '<button class="btn ghost sm" data-a="stop"'+(s.monitoring_enabled?"":" disabled")+'>Stop monitoring</button>'+
+      '<button class="btn ghost sm" data-a="backfill"'+(readable?"":" disabled")+'>Backfill 500</button>'+
+      '<button class="btn ghost sm" data-a="jobs">Backfill jobs</button>'+
+      '<button class="btn ghost sm" data-a="messages">Stored messages</button>'+
+      '<button class="btn danger sm" data-a="delete">Delete</button>'+
+    '</div>'+
+    (readable ? "" : '<div class="hintbox"><b>Not readable in state '+esc(s.access_status)+'.</b>'+
+      (canJoin ? 'Use Request access — it submits exactly one join request and never duplicates it.'
+               : 'Monitoring, search and backfill all require verified access first.')+'</div>')+
+    '<div class="res" id="srcActionRes"></div>';
+}
+
+$("#srcDetail").addEventListener("click", async e=>{
+  const b = e.target.closest("button[data-a]");
+  if(!b || selectedId == null) return;
+  const id = selectedId, out = $("#srcActionRes");
+  const a = b.dataset.a;
+  let r;
+
+  if(a === "check"){ r = await api("POST","/api/sources/"+id+"/check-access");
+    if(r.ok){ toast("Probe: " + r.data.access_status + (r.data.status_reason ? " — " + r.data.status_reason : "")); loadSources(); }
+    else toast(errText(r), true); return; }
+
+  if(a === "request"){
+    if(!confirm("Submit a real join request to Telegram for source " + id + "?")) return;
+    r = await api("POST","/api/sources/"+id+"/request-access");
+    if(r.ok){ toast("Join request: " + r.data.status); loadSources(); } else toast(errText(r), true); return; }
+
+  if(a === "start"){
+    r = await api("POST","/api/sources/"+id+"/monitoring/start");
+    if(r.ok){ toast("Monitoring on. Last message id " + (r.data.last_message_id ?? "—")); loadSources(); }
+    else toast(errText(r), true); return; }
+
+  if(a === "stop"){ r = await api("POST","/api/sources/"+id+"/monitoring/stop");
+    if(r.ok){ toast("Monitoring stopped."); loadSources(); } else toast(errText(r), true); return; }
+
+  if(a === "backfill"){
+    if(!confirm("Queue a backfill of up to 500 older messages for source " + id + "?\n\nThis reads bulk history from Telegram.")) return;
+    r = await api("POST","/api/sources/"+id+"/backfill",{limit:500});
+    if(r.ok){ toast("Backfill job " + r.data.id + " queued."); pollJob(id, r.data.id, out); } else toast(errText(r), true); return; }
+
+  if(a === "jobs"){ r = await api("GET","/api/sources/"+id+"/backfill");
+    if(!r.ok) return toast(errText(r), true);
+    out.innerHTML = r.data.length ? '<div class="tbl-wrap"><table><thead><tr><th>Job</th><th>Status</th>'+
+      '<th>Found</th><th>Inserted</th><th>Skipped</th><th>Checkpoint</th><th>Error</th></tr></thead><tbody>'+
+      r.data.map(j=>'<tr><td class="id">'+j.id+'</td><td><span class="st '+
+        (j.status==="COMPLETED"?"good":j.status==="FAILED"?"bad":j.status==="RUNNING"?"live":"pend")+'">'+j.status+'</span></td>'+
+        '<td class="num">'+j.messages_found+'</td><td class="num">'+j.messages_inserted+'</td>'+
+        '<td class="num">'+j.messages_skipped+'</td><td class="num">'+(j.checkpoint_message_id??"—")+'</td>'+
+        '<td>'+esc(j.error_message||"—")+'</td></tr>').join("")+'</tbody></table></div>'
+      : '<div class="empty">No backfill jobs for this source.</div>';
+    return; }
+
+  if(a === "messages"){
+    document.querySelector('.tab[data-p="p-msg"]').click();
+    $("#msrc").value = String(id); $("#btnMsgSearch").click(); return; }
+
+  if(a === "delete"){
+    const s = SOURCES.find(x=>x.id===id);
+    if(!confirm("Delete source "+id+" ("+s.identifier+")?\n\nThis also deletes every message and media row collected from it. There is no undo.")) return;
+    r = await api("DELETE","/api/sources/"+id);
+    if(r.ok){ toast("Source deleted."); selectedId=null; loadSources(); } else toast(errText(r), true); return; }
+});
+
+async function pollJob(sourceId, jobId, out){
+  for(let i=0;i<40;i++){
+    await new Promise(r=>setTimeout(r, 2500));
+    const r = await api("GET","/api/sources/"+sourceId+"/backfill/"+jobId);
+    if(!r.ok) return;
+    const j = r.data;
+    out.innerHTML = '<div class="warnbox">Backfill job '+j.id+' — <b>'+j.status+'</b> · found '+
+      j.messages_found+' · inserted '+j.messages_inserted+' · skipped '+j.messages_skipped+
+      (j.error_message ? ' · '+esc(j.error_message) : '')+'</div>';
+    if(["COMPLETED","PARTIAL","FAILED"].includes(j.status)){ loadSources(); return; }
+  }
+}
+
+$("#btnRegister").addEventListener("click", async ()=>{
+  const identifier = $("#newIdent").value.trim();
+  if(!identifier) return toast("Enter an identifier", true);
+  const r = await api("POST","/api/sources",{identifier, monitoring_enabled: $("#newMon").checked});
+  if(r.ok){ $("#newIdent").value=""; selectedId = r.data.id; toast("Registered as id "+r.data.id+" — "+r.data.access_status); loadSources(); }
+  else toast(errText(r), true);
+});
+
+function fillSourceSelects(){
+  const readable = SOURCES.filter(s=>READABLE.includes(s.access_status));
+  const label = s => s.id + " · " + (s.title || s.identifier);
+  const opts = list => list.map(s=>'<option value="'+s.id+'">'+esc(label(s))+'</option>').join("");
+  $("#csrc").innerHTML = readable.length ? opts(readable) : '<option value="">no readable sources</option>';
+  $("#msrc").innerHTML = '<option value="">all sources</option>' + opts(SOURCES);
+  const bots = SOURCES.filter(s=>s.source_type==="bot");
+  $("#botsel").innerHTML = bots.length ? opts(bots) : '<option value="">no bot sources registered</option>';
+}
+
+/* ---------------- rendering results ---------------- */
+function renderSearch(container, outcome, note){
+  const box = $(container);
+  let h = "";
+  if(note) h += '<div class="warnbox">'+note+'</div>';
+  (outcome.warnings||[]).forEach(w=> h += '<div class="warnbox">'+esc(w)+'</div>');
+  const items = outcome.results || [];
+  h += '<div class="res-hd"><h3>'+items.length+' result'+(items.length===1?"":"s")+'</h3>'+
+       (outcome.method_used ? '<span class="tagx">'+esc(outcome.method_used)+'</span>' : '')+
+       (outcome.quota ? '<span class="tagx">quota '+outcome.quota.remaining+'/'+outcome.quota.total_daily+'</span>' : '')+
+       (outcome.pagination && outcome.pagination.has_more ? '<span class="tagx">more available</span>' : '')+'</div>';
+  if(!items.length) h += '<div class="empty">Nothing matched. For a live search that is not the same as "no access" — an inaccessible source is refused with an error instead.</div>';
+  items.forEach(m=>{
+    const ch = m.channel || {};
+    h += '<div class="msg"><div class="msg-hd">'+
+      '<span class="who">'+esc(ch.title || ch.username || "unknown channel")+'</span>'+
+      (ch.username ? '<span>@'+esc(ch.username)+'</span>' : '')+
+      (m.date ? '<span>'+new Date(m.date).toLocaleString()+'</span>' : '')+
+      (m.sender && (m.sender.username||m.sender.display_name) ? '<span>from '+esc(m.sender.username||m.sender.display_name)+'</span>' : '')+
+      '</div><div class="msg-body">'+esc(m.text || "(no text)")+'</div><div class="msg-ft">'+
+      '<span class="tagx '+(m.visibility==="public"?"pub":m.visibility==="account_scoped"?"scoped":"")+'">'+esc(m.visibility)+'</span>'+
+      (m.media ? '<span class="tagx">'+esc(m.media.media_type)+'</span>' : '')+
+      '<span class="tagx">msg '+esc(m.message_id)+'</span>'+
+      (m.url ? '<a href="'+esc(m.url)+'" target="_blank" rel="noopener">open in Telegram</a>' : '')+
+      (ch.username ? '<button class="btn ghost sm" data-save="'+esc(ch.username)+'|'+esc(m.message_id)+'">Save to database</button>' : '')+
+      '</div></div>';
+  });
+  if(outcome.skipped && outcome.skipped.length){
+    h += '<div class="res-hd"><h3>skipped '+outcome.skipped.length+'</h3></div>';
+    outcome.skipped.forEach(s=> h += '<div class="warnbox">source '+s.source_id+' — '+esc(s.reason)+'</div>');
+  }
+  box.innerHTML = h;
+}
+
+document.addEventListener("click", async e=>{
+  const b = e.target.closest("button[data-save]");
+  if(!b) return;
+  const [username, mid] = b.dataset.save.split("|");
+  const r = await api("POST","/api/telegram/search/results/save",
+    {identifier:"@"+username, telegram_message_id: Number(mid), collection_method:"manual_collection"});
+  if(r.ok){ toast(r.data.inserted ? "Saved to the database." : "Already stored — nothing inserted."); loadSources(); }
+  else toast(errText(r), true);
+});
+
+/* ---------------- live search ---------------- */
+$("#btnGlobal").addEventListener("click", async ()=>{
+  const q = $("#gq").value.trim();
+  if(!q) return toast("Enter a query", true);
+  const p = new URLSearchParams({q, limit:$("#glimit").value, sort:$("#gsort").value});
+  if($("#gmedia").value) p.set("media_type", $("#gmedia").value);
+  const r = await api("GET","/api/telegram/search/global?"+p);
+  if(!r.ok) return toast(errText(r), true);
+  renderSearch("#globalRes", r.data,
+    r.data.method_used === "messages.searchGlobal"
+      ? "<b>Account-scoped results.</b> The free cross-channel search quota was unavailable, so this fell back to Telegram's index for this account — mostly channels it already joined."
+      : null);
+});
+
+$("#btnChanSearch").addEventListener("click", async ()=>{
+  const id = $("#csrc").value, q = $("#cq").value.trim();
+  if(!id) return toast("No source with verified access is available", true);
+  if(!q) return toast("Enter a query", true);
+  const p = new URLSearchParams({q, limit:$("#climit").value});
+  if($("#csender").value.trim()) p.set("sender_username", $("#csender").value.trim());
+  const r = await api("GET","/api/sources/"+id+"/search?"+p);
+  if(!r.ok) return toast(errText(r), true);
+  renderSearch("#chanRes", r.data);
+});
+
+$("#btnAnySearch").addEventListener("click", async ()=>{
+  const id = $("#aid").value.trim().replace(/^@/,""), q = $("#aq").value.trim();
+  if(!id || !q) return toast("Channel and query are both required", true);
+  const p = new URLSearchParams({q, limit:$("#alimit").value});
+  const r = await api("GET","/api/telegram/channels/"+encodeURIComponent(id)+"/search?"+p);
+  if(!r.ok) return toast(errText(r), true);
+  renderSearch("#anyRes", r.data);
+});
+
+/* ---------------- stored messages ---------------- */
+$("#btnMsgSearch").addEventListener("click", async ()=>{
+  const p = new URLSearchParams({limit:$("#mlimit").value, offset:$("#moffset").value});
+  const add = (k,v) => { if(v) p.set(k,v); };
+  add("keyword", $("#mq").value.trim());
+  add("source_id", $("#msrc").value);
+  add("sender_username", $("#msender").value.trim());
+  add("media_type", $("#mmedia").value);
+  if($("#mfrom").value) p.set("date_from", $("#mfrom").value + "T00:00:00Z");
+  if($("#mto").value)   p.set("date_to",   $("#mto").value   + "T23:59:59Z");
+  const r = await api("GET","/api/messages?"+p);
+  if(!r.ok) return toast(errText(r), true);
+  const rows = r.data || [];
+  let h = '<div class="res-hd"><h3>'+rows.length+' stored message'+(rows.length===1?"":"s")+'</h3>'+
+          '<span class="tagx">no Telegram traffic</span></div>';
+  if(!rows.length) h += '<div class="empty">Nothing stored matches. Collection only fills this table once a source is in MONITORING.</div>';
+  rows.forEach(m=>{
+    const src = SOURCES.find(s=>s.id===m.source_id);
+    h += '<div class="msg"><div class="msg-hd">'+
+      '<span class="who">'+esc(src ? (src.title||src.identifier) : "source "+m.source_id)+'</span>'+
+      (m.message_date ? '<span>'+new Date(m.message_date).toLocaleString()+'</span>' : '')+
+      (m.sender_username ? '<span>from @'+esc(m.sender_username)+'</span>' : '')+
+      '</div><div class="msg-body">'+esc(m.text || "(no text)")+'</div><div class="msg-ft">'+
+      '<span class="tagx">row '+m.id+'</span><span class="tagx">msg '+m.telegram_message_id+'</span>'+
+      (m.media_type ? '<span class="tagx">'+esc(m.media_type)+'</span>' : '')+
+      (m.views != null ? '<span class="tagx">'+m.views+' views</span>' : '')+
+      (m.source_url ? '<a href="'+esc(m.source_url)+'" target="_blank" rel="noopener">open in Telegram</a>' : '')+
+      '</div></div>';
+  });
+  $("#msgRes").innerHTML = h;
+});
+
+/* ---------------- discovery & bots ---------------- */
+$("#btnDiscover").addEventListener("click", async ()=>{
+  const q = $("#dq").value.trim();
+  if(!q) return toast("Enter a keyword", true);
+  const r = await api("GET","/api/telegram/channels/search?"+new URLSearchParams({q, limit:$("#dlimit").value}));
+  if(!r.ok) return toast(errText(r), true);
+  const items = r.data.results || [];
+  let h = (r.data.warnings||[]).map(w=>'<div class="warnbox">'+esc(w)+'</div>').join("");
+  h += '<div class="res-hd"><h3>'+items.length+' channel'+(items.length===1?"":"s")+'</h3></div>';
+  if(!items.length) h += '<div class="empty">Telegram returned nothing for that keyword.</div>';
+  else h += '<div class="tbl-wrap"><table><thead><tr><th>Title</th><th>Username</th><th>Type</th>'+
+    '<th>Members</th><th>Hint</th><th></th></tr></thead><tbody>'+
+    items.map(c=>'<tr><td><div class="trunc" style="display:flex;align-items:center;">'+
+      (c.photo_thumb_data_uri ? '<img src="'+c.photo_thumb_data_uri+'" class="avatar avatar-thumb" alt="" '+
+        'title="Blurred preview — click to load the real photo" data-real-photo="'+esc(c.telegram_id)+'" />' : '')+
+      esc(c.title||"—")+'</div></td>'+
+      '<td>'+(c.username?'@'+esc(c.username):'—')+'</td><td>'+esc(c.type)+'</td>'+
+      '<td class="num">'+(c.member_count??"—")+'</td>'+
+      '<td><span class="st '+(c.access_status==="ALREADY_MEMBER"?"good":c.access_status==="PUBLIC_LIKELY"?"pend":"")+'">'+esc(c.access_status)+'</span></td>'+
+      '<td><button class="btn ghost sm" data-reg="'+esc(c.telegram_id)+'">Register</button></td></tr>').join("")+
+    '</tbody></table></div>';
+  $("#discRes").innerHTML = h;
+});
+
+document.addEventListener("click", async e=>{
+  const b = e.target.closest("button[data-reg]");
+  if(!b) return;
+  const r = await api("POST","/api/telegram/channels/"+encodeURIComponent(b.dataset.reg)+"/register?monitoring_enabled=false");
+  if(r.ok){ toast("Registered as id "+r.data.id+" — "+r.data.access_status); loadSources(); }
+  else toast(errText(r), true);
+});
+
+/* Real profile photos are fetched on demand, one entity at a time, never
+   auto-loaded for a whole result list - each click costs Telegram one RPC
+   (cached server-side after that), so only load what was actually asked for. */
+const photoModal = $("#photoModal");
+const photoModalImg = $("#photoModalImg");
+function openPhotoModal(blobUrl){
+  photoModalImg.src = blobUrl;
+  photoModal.hidden = false;
+}
+function closePhotoModal(){
+  photoModal.hidden = true;
+  photoModalImg.src = "";
+}
+$("#photoModalClose").addEventListener("click", closePhotoModal);
+photoModal.addEventListener("click", e=>{ if(e.target === photoModal) closePhotoModal(); });
+document.addEventListener("keydown", e=>{ if(e.key === "Escape" && !photoModal.hidden) closePhotoModal(); });
+
+document.addEventListener("click", async e=>{
+  const img = e.target.closest("img[data-real-photo]");
+  if(!img) return;
+  if(img.src.startsWith("blob:")){ openPhotoModal(img.src); return; }
+  const id = img.dataset.realPhoto;
+  const path = "/api/telegram/channels/"+encodeURIComponent(id)+"/photo";
+  img.classList.add("loading");
+  toast("Loading real photo…");
+  const t0 = performance.now();
+  try{
+    const res = await fetch(base()+path);
+    const ms = Math.round(performance.now()-t0);
+    if(res.status === 404){
+      logCall("GET", path, 404, ms, await res.clone().json().catch(()=>null));
+      toast("This entity has no profile photo on Telegram", true);
+      img.classList.remove("loading");
+      return;
+    }
+    if(!res.ok){
+      logCall("GET", path, res.status, ms, await res.clone().json().catch(()=>null));
+      toast("Could not load real photo: HTTP "+res.status, true);
+      img.classList.remove("loading");
+      return;
+    }
+    const blob = await res.blob();
+    logCall("GET", path, res.status, ms, "image/jpeg, "+blob.size+" bytes");
+    const blobUrl = URL.createObjectURL(blob);
+    img.src = blobUrl;
+    img.title = "Real profile photo — click to view full size";
+    img.classList.remove("avatar-thumb","loading");
+    openPhotoModal(blobUrl);
+  }catch(err){
+    toast("Could not reach API for photo: "+(err.message||err), true);
+    img.classList.remove("loading");
+  }
+});
+
+$("#btnExtract").addEventListener("click", async ()=>{
+  const text = $("#dtext").value;
+  if(!text.trim()) return toast("Paste some text first", true);
+  const r = await api("POST","/api/telegram/discovery/extract-links",{text});
+  if(!r.ok) return toast(errText(r), true);
+  const c = r.data.candidates || [];
+  let h = '<div class="res-hd"><h3>'+c.length+' Telegram link'+(c.length===1?"":"s")+'</h3>'+
+          '<span class="tagx">non-Telegram URLs discarded, never fetched</span></div>';
+  if(!c.length) h += '<div class="empty">No t.me or telegram.me links found in that text.</div>';
+  else h += '<div class="tbl-wrap"><table><thead><tr><th>URL</th><th>Identifier</th><th>Access</th>'+
+    '<th>Title</th><th>Already tracked</th></tr></thead><tbody>'+
+    c.map(x=>'<tr><td><div class="trunc">'+esc(x.raw_url)+'</div></td><td>'+esc(x.identifier||"—")+'</td>'+
+      '<td>'+(x.access_status?'<span class="st '+stClass(x.access_status)+'">'+esc(x.access_status)+'</span>':'—')+'</td>'+
+      '<td><div class="trunc">'+esc(x.title||"—")+'</div></td>'+
+      '<td>'+(x.already_registered_source_id ? "id "+x.already_registered_source_id : "no")+'</td></tr>').join("")+
+    '</tbody></table></div>';
+  $("#extractRes").innerHTML = h;
+});
+
+$("#btnJoin").addEventListener("click", async ()=>{
+  const identifier = $("#invite").value.trim();
+  if(!identifier) return toast("Paste an invite link", true);
+  if(!confirm("Join this Telegram source for real?\n\n"+identifier)) return;
+  const r = await api("POST","/api/telegram/invites/join",{identifier});
+  if(!r.ok) return toast(errText(r), true);
+  $("#joinRes").innerHTML = '<div class="warnbox"><b>'+esc(r.data.status)+'</b>'+
+    (r.data.reason ? ' — '+esc(r.data.reason) : '')+' · source id '+r.data.source.id+'</div>';
+  toast("Join result: "+r.data.status);
+  loadSources();
+});
+
+$("#btnStartBot").addEventListener("click", async ()=>{
+  const id = $("#botsel").value;
+  if(!id) return toast("Register a bot as a source first", true);
+  if(!confirm("Send a real /start message to this bot?")) return;
+  const r = await api("POST","/api/telegram/bots/"+id+"/start");
+  if(!r.ok) return toast(errText(r), true);
+  const d = r.data;
+  let h = '<div class="warnbox"><b>'+esc(d.status)+'</b>'+(d.error?' — '+esc(d.error):'')+'</div>';
+  if(d.response_text) h += '<div class="msg"><div class="msg-hd"><span class="who">bot reply</span>'+
+    (d.response_date?'<span>'+new Date(d.response_date).toLocaleString()+'</span>':'')+'</div>'+
+    '<div class="msg-body">'+esc(d.response_text)+'</div></div>';
+  if(d.buttons && d.buttons.length) h += '<div class="res-hd"><h3>buttons</h3></div>'+
+    d.buttons.map(b=>'<div class="tagx" style="margin:0 4px 4px 0;display:inline-block">'+esc(b.text)+
+      (b.url?' → '+esc(b.url):' (callback, never executed)')+'</div>').join("");
+  if(d.discovered && d.discovered.length) h += '<div class="res-hd"><h3>discovered '+d.discovered.length+'</h3></div>'+
+    '<div class="tbl-wrap"><table><thead><tr><th>Source</th><th>Identifier</th><th>Access</th><th>New?</th></tr></thead><tbody>'+
+    d.discovered.map(x=>'<tr><td class="id">'+x.source_id+'</td><td>'+esc(x.identifier)+'</td>'+
+      '<td><span class="st '+stClass(x.access_status)+'">'+esc(x.access_status)+'</span></td>'+
+      '<td>'+(x.already_existed?"existing":"new, dormant")+'</td></tr>').join("")+'</tbody></table></div>';
+  $("#botRes").innerHTML = h;
+  loadSources();
+});
+
+/* ---------------- notifications ---------------- */
+$("#btnNotif").addEventListener("click", async ()=>{
+  const p = new URLSearchParams({limit:"50"});
+  if($("#unreadOnly").checked) p.set("unread_only","true");
+  const r = await api("GET","/api/notifications?"+p);
+  if(!r.ok) return toast(errText(r), true);
+  const rows = r.data || [];
+  let h = '<div class="res-hd"><h3>'+rows.length+' notification'+(rows.length===1?"":"s")+'</h3></div>';
+  if(!rows.length) h += '<div class="empty">None yet. These are written on access granted, access rejected and collection errors.</div>';
+  else h += '<div class="tbl-wrap"><table><thead><tr><th>ID</th><th>Event</th><th>Source</th>'+
+    '<th>Transition</th><th>Created</th><th>Read</th><th></th></tr></thead><tbody>'+
+    rows.map(n=>'<tr><td class="id">'+n.id+'</td><td>'+esc(n.event_type)+'</td>'+
+      '<td><div class="trunc">'+esc(n.source_name||("source "+(n.source_id??"—")))+'</div></td>'+
+      '<td>'+esc(n.previous_status||"—")+' → '+esc(n.new_status||"—")+'</td>'+
+      '<td class="num">'+new Date(n.created_at).toLocaleString()+'</td>'+
+      '<td>'+(n.is_read?"yes":"no")+'</td>'+
+      '<td><button class="btn ghost sm" data-read="'+n.id+'">Mark read</button></td></tr>').join("")+
+    '</tbody></table></div>';
+  $("#notifRes").innerHTML = h;
+});
+
+document.addEventListener("click", async e=>{
+  const b = e.target.closest("button[data-read]");
+  if(!b) return;
+  const r = await api("POST","/api/notifications/"+b.dataset.read+"/read");
+  if(r.ok) toast("Server returned 200 — but this flag does not persist (known defect).");
+  else toast(errText(r), true);
+});
+
+/* ---------------- raw ---------------- */
+$("#btnRaw").addEventListener("click", async ()=>{
+  const m = $("#rawM").value, path = $("#rawP").value.trim();
+  if(!path.startsWith("/")) return toast("Path must start with /", true);
+  let body;
+  const raw = $("#rawB").value.trim();
+  if(raw && (m==="POST"||m==="PATCH")){
+    try{ body = JSON.parse(raw); }catch(err){ return toast("Body is not valid JSON: "+err.message, true); }
+  }
+  const r = await api(m, path, body);
+  $("#rawRes").innerHTML = '<div class="res-hd"><h3>HTTP '+r.status+'</h3><span class="tagx">'+r.ms+'ms</span></div>'+
+    '<pre style="background:var(--surface-2);border:1px solid var(--line);border-radius:3px;padding:10px;'+
+    'font-size:11.5px;max-height:400px;overflow:auto;white-space:pre-wrap;word-break:break-word">'+
+    esc(JSON.stringify(r.data, null, 2))+'</pre>';
+});
+
+/* ---------------- boot ---------------- */
+function refresh(){
+  if(!checkOrigin()){
+    $("#connPill").className = "pill bad";
+    $("#connPill").innerHTML = '<span class="dot"></span>wrong origin';
+    $("#srcRows").innerHTML = '<tr><td colspan="7" class="empty">'+
+      'Blocked by the browser — open this console from the API itself (see the banner above).</td></tr>';
+    return;
+  }
+  loadStatus();
+  loadSources();
+}
+$("#refreshAll").addEventListener("click", refresh);
+baseInput.addEventListener("change", refresh);
+refresh();
+/* Poll status, but never keep firing requests the browser is only going to
+   block - that fills the log with noise that looks like the server failing. */
+setInterval(()=>{ if(isSameOrigin()) loadStatus(); }, 30000);
+</script>
+</body>
+</html>
