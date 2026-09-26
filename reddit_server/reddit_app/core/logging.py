@@ -1,8 +1,8 @@
 """Logging setup with hard guarantees that secrets never reach a log sink.
 
 ``SecretRedactionFilter`` is attached to every handler on the root logger, so even a
-third-party library (httpx, uvicorn) cannot leak the client secret, account password
-or access token through a log record.
+third-party library (httpx, uvicorn) cannot leak a token or RSS feed secret through
+a log record.
 """
 
 from __future__ import annotations
@@ -21,10 +21,7 @@ SENSITIVE_KEYS = frozenset(
         "token",
         "access_token",
         "refresh_token",
-        "client_secret",
-        "reddit_client_secret",
-        "password",
-        "reddit_password",
+        "reddit_rss_feed",
     }
 )
 

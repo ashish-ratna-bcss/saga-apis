@@ -10,14 +10,14 @@ import functools
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
-    """Runtime configuration for the standalone Reddit provider service."""
+    """Runtime configuration for the standalone Reddit RSS provider service."""
 
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),
@@ -47,56 +47,9 @@ class Settings(BaseSettings):
         ),
     )
 
-    # --------------------------------------------------------------------- reddit --
-    reddit_client_id: str = Field(default="", description="Reddit OAuth2 app client id.")
-    reddit_client_secret: SecretStr = Field(
-        default=SecretStr(""),
-        description="Reddit OAuth2 app client secret. Never logged and never returned by the API.",
-    )
-    reddit_username: str = Field(
-        default="",
-        description=(
-            "Optional. With reddit_password, authenticates as this Reddit account "
-            "(OAuth2 'password' grant). Omit both for application-only "
-            "'client_credentials' auth (public read access, no specific account)."
-        ),
-    )
-    reddit_password: SecretStr = Field(default=SecretStr(""), description="Reddit account password.")
-    reddit_user_agent: str = Field(
-        default="",
-        description=(
-            "Required by Reddit's API rules: a unique, descriptive user agent. "
-            "Reddit throttles or blocks generic/default user agents."
-        ),
-    )
-    reddit_oauth_base_url: str = Field(
-        default="https://www.reddit.com",
-        description="Base URL for the Reddit OAuth2 token endpoint.",
-    )
-    reddit_api_base_url: str = Field(
-        default="https://oauth.reddit.com",
-        description="Base URL for the authenticated Reddit REST API.",
-    )
-    reddit_request_timeout_seconds: float = Field(default=20.0, gt=0, le=300)
-    reddit_max_retries: int = Field(
-        default=3, ge=0, le=10, description="Bounded retries for transient failures."
-    )
-    reddit_retry_base_delay_seconds: float = Field(default=0.5, gt=0, le=30)
-    reddit_max_retry_delay_seconds: float = Field(default=30.0, gt=0, le=300)
-    reddit_max_rate_limit_wait_seconds: float = Field(
-        default=60.0,
-        gt=0,
-        description="Refuse to sleep longer than this for a 429; raise instead.",
-    )
-    reddit_token_refresh_margin_seconds: int = Field(
-        default=60,
-        ge=0,
-        description="Renew the access token this many seconds before it actually expires.",
-    )
-
     # ---------------------------------------------------------- reddit rss (no auth) --
-    #: Independent of the OAuth settings above -- the RSS transport never reads
-    #: reddit_client_id/reddit_client_secret and works when they are unset.
+    #: This service only ever talks to Reddit's public, unauthenticated .rss
+    #: endpoints -- no Reddit OAuth client id/secret exist anywhere here.
     reddit_rss_user_agent: str = Field(
         default="reddit-rss-monitor/1.0 (stateless keyword/event monitor)",
         description="User-Agent sent to Reddit's public .rss endpoints. No credentials involved.",
@@ -189,52 +142,7 @@ class Settings(BaseSettings):
             raise ValueError("log_level must be one of " + ", ".join(sorted(allowed)))
         return normalized
 
-    @field_validator("reddit_oauth_base_url")
-    @classmethod
-    def _validate_oauth_base_url(cls, value: str) -> str:
-        cleaned = value.strip().rstrip("/")
-        if not cleaned.startswith(("https://www.reddit.com", "https://reddit.com")):
-            # Hard allow-list: this service only ever talks to the official API.
-            raise ValueError("reddit_oauth_base_url must start with https://www.reddit.com")
-        return cleaned
-
-    @field_validator("reddit_api_base_url")
-    @classmethod
-    def _validate_api_base_url(cls, value: str) -> str:
-        cleaned = value.strip().rstrip("/")
-        if not cleaned.startswith("https://oauth.reddit.com"):
-            raise ValueError("reddit_api_base_url must start with https://oauth.reddit.com")
-        return cleaned
-
-    @model_validator(mode="after")
-    def _validate_retry_window(self) -> Settings:
-        if self.reddit_retry_base_delay_seconds > self.reddit_max_retry_delay_seconds:
-            raise ValueError(
-                "reddit_retry_base_delay_seconds must be <= reddit_max_retry_delay_seconds"
-            )
-        return self
-
     # --------------------------------------------------------------------- helpers --
-    @property
-    def client_secret(self) -> str:
-        """The raw client secret. Only ever passed to the token-exchange request.
-
-        Tolerates a plain string because ``model_copy(update=...)`` bypasses
-        validation and would otherwise leave a bare ``str`` in this field.
-        """
-
-        value = self.reddit_client_secret
-        if isinstance(value, SecretStr):
-            return value.get_secret_value().strip()
-        return str(value or "").strip()
-
-    @property
-    def password(self) -> str:
-        value = self.reddit_password
-        if isinstance(value, SecretStr):
-            return value.get_secret_value().strip()
-        return str(value or "").strip()
-
     @property
     def reddit_rss_feed_value(self) -> str:
         """The raw RSS feed token. Only ever appended to RSS request params."""
@@ -243,20 +151,6 @@ class Settings(BaseSettings):
         if isinstance(value, SecretStr):
             return value.get_secret_value().strip()
         return str(value or "").strip()
-
-    @property
-    def reddit_configured(self) -> bool:
-        """True when the minimum credentials to authenticate are present."""
-
-        return bool(self.reddit_client_id and self.client_secret and self.reddit_user_agent)
-
-    @property
-    def has_account_credentials(self) -> bool:
-        return bool(self.reddit_username and self.password)
-
-    @property
-    def grant_type(self) -> Literal["password", "client_credentials"]:
-        return "password" if self.has_account_credentials else "client_credentials"
 
     @property
     def api_key_list(self) -> list[str]:
@@ -278,9 +172,6 @@ class Settings(BaseSettings):
         return {
             "app_name": self.app_name,
             "environment": self.environment,
-            "reddit_api_base_url": self.reddit_api_base_url,
-            "reddit_configured": self.reddit_configured,
-            "grant_type": self.grant_type if self.reddit_configured else None,
             "auth_enabled": self.auth_enabled,
         }
 

@@ -1,16 +1,10 @@
-"""Business logic for the unauthenticated Reddit RSS/event-monitoring transport.
+"""Business logic for the Reddit RSS/event-monitoring transport -- this
+service's only Reddit transport (no OAuth, no client id/secret anywhere).
 
-Independent of ``app/services/provider_service.py`` (the OAuth transport): a
-different client, a different error hierarchy (``REDDIT_RSS_*`` codes), no shared
-state. Both are "independently callable" Reddit transports normalized into their
-own (related but distinct) response shapes -- see ``app/reddit/client.py`` for
-where both are wired up side by side.
-
-Stateless like the OAuth service: every call fetches live from Reddit's RSS host
-and returns a fresh result. No polling, no persistence, no cross-request
-deduplication -- a caller (e.g. SOC Eye) is expected to call ``monitor``/``event``
-on its own schedule, exactly as it already does for the OAuth endpoints (see
-INTEGRATION.md).
+Stateless: every call fetches live from Reddit's RSS host and returns a fresh
+result. No polling, no persistence, no cross-request deduplication -- a caller
+(e.g. SOC Eye) is expected to call ``monitor``/``event``/``user`` on its own
+schedule (see INTEGRATION.md).
 
 ``monitor()`` is the single use-case both ``POST /api/reddit/rss/monitor`` and
 ``GET /api/reddit/rss/search`` call -- there is deliberately no separate code path
@@ -31,8 +25,12 @@ from reddit_app.reddit.rss_parser import parse_feed
 from reddit_app.reddit.rss_urls import (
     RSS_SEARCH_SORTS,
     RSS_TIMES,
+    RSS_USER_KINDS,
+    RSS_USER_SORTS,
     build_search_url,
+    build_user_url,
     normalize_rss_subreddits,
+    normalize_rss_username,
 )
 
 MAX_KEYWORDS = 25
@@ -156,6 +154,41 @@ def _within_date_range(post: dict[str, Any], start: datetime | None, end: dateti
     return not (end and published > end)
 
 
+def _annotate_and_filter(
+    posts: list[dict[str, Any]],
+    *,
+    cleaned_keywords: list[str],
+    cleaned_strong: list[str],
+    cleaned_exclude: list[str],
+    match_field: str,
+    min_matches: int,
+    start: datetime | None,
+    end: datetime | None,
+) -> list[dict[str, Any]]:
+    """Shared post-fetch pipeline for every RSS feed shape (search results,
+    profile activity, ...): annotate ``matched_keywords``/``signal``, drop
+    ``exclude`` matches, dedupe, then apply the client-side date bound. Kept as
+    one function so ``monitor()`` and ``user()`` can never drift apart on what
+    "signal"/"exclude"/"dedupe" mean."""
+
+    for post in posts:
+        haystack = _build_haystack(post, match_field)
+        matched = _match_terms(haystack, cleaned_keywords)
+        strong_matched = _match_terms(haystack, cleaned_strong)
+        post["matched_keywords"] = matched + [k for k in strong_matched if k not in matched]
+        post["signal"] = bool(strong_matched) or len(matched) >= min_matches
+    if cleaned_exclude:
+        posts = [
+            post
+            for post in posts
+            if not _match_terms(_build_haystack(post, match_field), cleaned_exclude)
+        ]
+    posts = _dedupe(posts)
+    if start or end:
+        posts = [post for post in posts if _within_date_range(post, start, end)]
+    return posts
+
+
 def _dedupe(posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Within-response only, by id/guid/url -- see INTEGRATION.md for why this
     service deliberately does not deduplicate across requests."""
@@ -246,21 +279,16 @@ class RedditRssService:
             cache_key(path, params), lambda: self._client.fetch(path, params)
         )
         posts = parse_feed(raw_xml)
-        for post in posts:
-            haystack = _build_haystack(post, match_field)
-            matched = _match_terms(haystack, cleaned_keywords)
-            strong_matched = _match_terms(haystack, cleaned_strong)
-            post["matched_keywords"] = matched + [k for k in strong_matched if k not in matched]
-            post["signal"] = bool(strong_matched) or len(matched) >= min_matches
-        if cleaned_exclude:
-            posts = [
-                post
-                for post in posts
-                if not _match_terms(_build_haystack(post, match_field), cleaned_exclude)
-            ]
-        posts = _dedupe(posts)
-        if start or end:
-            posts = [post for post in posts if _within_date_range(post, start, end)]
+        posts = _annotate_and_filter(
+            posts,
+            cleaned_keywords=cleaned_keywords,
+            cleaned_strong=cleaned_strong,
+            cleaned_exclude=cleaned_exclude,
+            match_field=match_field,
+            min_matches=min_matches,
+            start=start,
+            end=end,
+        )
 
         return {
             "source": "reddit",
@@ -268,6 +296,98 @@ class RedditRssService:
             "authenticated": False,
             "query": built_query,
             "subreddits": sub_list,
+            "sort": sort_key,
+            "time_range": time_key,
+            "from_date": from_date,
+            "to_date": to_date,
+            "count": len(posts),
+            "posts": posts,
+        }
+
+    async def user(
+        self,
+        *,
+        username: str,
+        kind: str = "overview",
+        keywords: list[str] | None = None,
+        strong_keywords: list[str] | None = None,
+        exclude: list[str] | None = None,
+        match_field: str = "full",
+        min_matches: int = 1,
+        sort: str = "new",
+        time_range: str = "all",
+        from_date: str | None = None,
+        to_date: str | None = None,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        """Monitor one redditor's public activity (overview/submitted/comments)
+        via Reddit's unauthenticated ``/user/{username}/...rss`` feeds --
+        the profile equivalent of ``monitor()``'s subreddit/keyword search.
+        ``keywords``/``strong_keywords``/``exclude`` are optional here (unlike
+        ``monitor()``, where a search term is mandatory): the username alone is
+        already a complete feed to watch, and keywords just narrow it further."""
+
+        cleaned_keywords = _clean_terms(keywords, label="keywords")
+        cleaned_strong = _clean_terms(strong_keywords, label="strong_keywords")
+        cleaned_exclude = _clean_terms(exclude, label="exclude")
+        name = normalize_rss_username(username)
+        start = _parse_date_bound(from_date, end_of_day=False)
+        end = _parse_date_bound(to_date, end_of_day=True)
+        if start and end and start > end:
+            raise RedditRssInvalidQueryError(
+                "from_date must be on or before to_date",
+                details={"from_date": from_date, "to_date": to_date},
+            )
+        if match_field not in ("title", "full"):
+            raise RedditRssInvalidQueryError(
+                f"Unsupported match_field '{match_field}'", details={"allowed": ["title", "full"]}
+            )
+        if min_matches < 1:
+            raise RedditRssInvalidQueryError("min_matches must be at least 1")
+
+        kind_key = (kind or "overview").lower()
+        if kind_key not in RSS_USER_KINDS:
+            raise RedditRssInvalidQueryError(
+                f"Unsupported kind '{kind}'",
+                details={"kind": kind, "allowed": sorted(RSS_USER_KINDS)},
+            )
+        sort_key = (sort or "new").lower()
+        if sort_key not in RSS_USER_SORTS:
+            raise RedditRssInvalidQueryError(
+                f"Unsupported sort '{sort}'",
+                details={"sort": sort, "allowed": sorted(RSS_USER_SORTS)},
+            )
+        time_key = (time_range or "all").lower()
+        if time_key not in RSS_TIMES:
+            raise RedditRssInvalidQueryError(
+                f"Unsupported time_range '{time_range}'",
+                details={"time_range": time_range, "allowed": sorted(RSS_TIMES)},
+            )
+
+        path, params = build_user_url(
+            username=name, kind=kind_key, sort=sort_key, time_range=time_key, limit=limit
+        )
+        raw_xml = await self._feed_cache.get_or_fetch(
+            cache_key(path, params), lambda: self._client.fetch(path, params)
+        )
+        posts = parse_feed(raw_xml)
+        posts = _annotate_and_filter(
+            posts,
+            cleaned_keywords=cleaned_keywords,
+            cleaned_strong=cleaned_strong,
+            cleaned_exclude=cleaned_exclude,
+            match_field=match_field,
+            min_matches=min_matches,
+            start=start,
+            end=end,
+        )
+
+        return {
+            "source": "reddit",
+            "transport": "rss",
+            "authenticated": False,
+            "username": name,
+            "kind": kind_key,
             "sort": sort_key,
             "time_range": time_key,
             "from_date": from_date,

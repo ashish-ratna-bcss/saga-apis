@@ -1,26 +1,17 @@
-"""The unauthenticated Reddit RSS/Atom transport -- no OAuth, no token, no
-``REDDIT_CLIENT_ID``/``REDDIT_CLIENT_SECRET``.
-
-Independent of ``RedditRestClient`` (``rest_client.py``): different host
-(``www.reddit.com``'s public ``.rss`` endpoints, not ``oauth.reddit.com``), no
-bearer token. This is the only class in this service allowed to make HTTP
-requests to Reddit's public RSS host, mirroring how ``RedditRestClient`` is the
-sole OAuth caller -- two transports, each with exactly one place that builds a
-request and translates errors.
+"""The Reddit RSS/Atom transport -- no OAuth, no token, no client id/secret of
+any kind. This is the only class in this service allowed to make HTTP requests
+to Reddit's public RSS host (``www.reddit.com``'s ``.rss`` endpoints).
 
 Reddit cut unauthenticated RSS's rate limit hard in June 2026 (~100/10min down to
-~1/min per feed), confirmed via ``X-Ratelimit-*`` response headers -- the same
-header names/shape the OAuth API already sends, so this client proactively
-throttles from them exactly like ``RedditRestClient`` does (see ``_Bucket``
-below), rather than a blind hardcoded sleep. Reddit's own documented workaround
-is appending ``user=``/``feed=`` (from an account's RSS preferences) to every
-request, which restores the old ceiling; ``reddit_rss_user``/``reddit_rss_feed``
-are optional and this client works without them, just harder-throttled.
+~1/min per feed), confirmed via ``X-Ratelimit-*`` response headers, so this client
+proactively throttles from them (see ``_Bucket`` below) rather than a blind
+hardcoded sleep. Reddit's own documented workaround is appending ``user=``/
+``feed=`` (from an account's RSS preferences) to every request, which restores
+the old ceiling; ``reddit_rss_user``/``reddit_rss_feed`` are optional and this
+client works without them, just harder-throttled.
 
 Only 429/5xx/timeouts/connection errors are retried, bounded, with backoff and
-jitter -- the same policy shape as the OAuth client, but reimplemented locally
-rather than imported, since ``RedditRestClient``'s retry loop is entangled with
-its OAuth token state that has no RSS equivalent.
+jitter.
 
 Every attempt (including retries) first passes through ``self._global_bucket``
 (see ``rate_limiter.py``) -- a proactive, process-wide pacing gate that exists

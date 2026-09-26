@@ -36,20 +36,6 @@ class RedditServiceError(Exception):
         return {"error": error}
 
 
-class ConfigurationError(RedditServiceError):
-    """The service is missing or has invalid configuration."""
-
-    code = "CONFIGURATION_ERROR"
-    http_status = 500
-
-
-class RedditNotConfiguredError(ConfigurationError):
-    """No usable Reddit OAuth2 credentials are configured."""
-
-    code = "REDDIT_NOT_CONFIGURED"
-    http_status = 503
-
-
 class ValidationError(RedditServiceError):
     """A caller supplied a value that request-body validation could not reject."""
 
@@ -64,179 +50,9 @@ class InvalidRedditUrlError(RedditServiceError):
     http_status = 400
 
 
-class SubredditNotFoundError(RedditServiceError):
-    code = "SUBREDDIT_NOT_FOUND"
-    http_status = 404
-
-    def __init__(self, name: str) -> None:
-        super().__init__(
-            f"The subreddit r/{name} could not be found.", details={"subreddit": name}
-        )
-
-
-class SubredditPrivateError(RedditServiceError):
-    """The subreddit exists but is private -- not readable without membership."""
-
-    code = "SUBREDDIT_PRIVATE"
-    http_status = 403
-
-    def __init__(self, name: str) -> None:
-        super().__init__(
-            f"The subreddit r/{name} is private and cannot be read.",
-            details={"subreddit": name},
-        )
-
-
-class SubredditQuarantinedError(RedditServiceError):
-    """The subreddit is quarantined; Reddit refuses listings without an opted-in,
-    logged-in user explicitly confirming the quarantine interstitial -- something an
-    application-only/service-account integration cannot do non-interactively."""
-
-    code = "SUBREDDIT_QUARANTINED"
-    http_status = 403
-
-    def __init__(self, name: str) -> None:
-        super().__init__(
-            f"The subreddit r/{name} is quarantined and requires interactive "
-            "opt-in that this service account has not completed.",
-            details={"subreddit": name},
-        )
-
-
-class PostNotFoundError(RedditServiceError):
-    code = "POST_NOT_FOUND"
-    http_status = 404
-
-    def __init__(self, post_id: str) -> None:
-        super().__init__(
-            f"The post {post_id} could not be found.", details={"post_id": post_id}
-        )
-
-
-class CommentNotFoundError(RedditServiceError):
-    code = "COMMENT_NOT_FOUND"
-    http_status = 404
-
-    def __init__(self, comment_id: str) -> None:
-        super().__init__(
-            f"The comment {comment_id} could not be found.",
-            details={"comment_id": comment_id},
-        )
-
-
-class UserNotFoundError(RedditServiceError):
-    code = "USER_NOT_FOUND"
-    http_status = 404
-
-    def __init__(self, username: str) -> None:
-        super().__init__(
-            f"The user u/{username} could not be found.", details={"username": username}
-        )
-
-
-class UnsupportedSearchError(RedditServiceError):
-    """A search capability was requested that Reddit's public API does not support
-    (e.g. free-text search across all comments)."""
-
-    code = "UNSUPPORTED_SEARCH"
-    http_status = 400
-
-
 # --------------------------------------------------------------------------------------
-# Reddit API errors
-# --------------------------------------------------------------------------------------
-class RedditAPIError(RedditServiceError):
-    """Base class for failures returned by (or while talking to) the Reddit API."""
-
-    code = "REDDIT_API_ERROR"
-    http_status = 502
-
-    #: Whether retrying the same call could plausibly succeed.
-    retryable: bool = False
-
-    def __init__(
-        self,
-        message: str = "Reddit API error",
-        *,
-        status_code: int | None = None,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        super().__init__(message, details=details)
-        self.status_code = status_code
-
-    def to_payload(self) -> dict[str, Any]:
-        payload = super().to_payload()
-        if self.status_code is not None:
-            payload["error"]["reddit_status"] = self.status_code
-        return payload
-
-
-class RedditAuthError(RedditAPIError):
-    """401/invalid_grant -- the configured Reddit credentials are missing or wrong."""
-
-    code = "REDDIT_AUTH_FAILED"
-    http_status = 502
-    retryable = False
-
-
-class RedditForbiddenError(RedditAPIError):
-    """403 -- Reddit rejected the request for a reason other than auth (e.g. a
-    private/quarantined subreddit, or a suspended/shadow-restricted account)."""
-
-    code = "REDDIT_FORBIDDEN"
-    http_status = 403
-    retryable = False
-
-
-class RedditNotFoundError(RedditAPIError):
-    """404 -- the raw Reddit resource does not exist. Route handlers translate this
-    into a more specific *NotFoundError once the resource kind is known."""
-
-    code = "REDDIT_NOT_FOUND"
-    http_status = 404
-    retryable = False
-
-
-class RedditRateLimitError(RedditAPIError):
-    """429 -- the rate limit was hit and retries were exhausted."""
-
-    code = "REDDIT_RATE_LIMITED"
-    http_status = 429
-    retryable = True
-
-    def __init__(
-        self, message: str = "Reddit rate limit exceeded", *, retry_after: float | None = None, **kwargs: Any
-    ) -> None:
-        super().__init__(message, status_code=429, **kwargs)
-        self.retry_after = retry_after
-
-    def to_payload(self) -> dict[str, Any]:
-        payload = super().to_payload()
-        if self.retry_after is not None:
-            payload["error"]["retry_after"] = self.retry_after
-        return payload
-
-
-class RedditServerError(RedditAPIError):
-    """5xx returned by Reddit."""
-
-    code = "REDDIT_API_ERROR"
-    http_status = 502
-    retryable = True
-
-
-class RedditTransportError(RedditAPIError):
-    """Network/timeout failure while talking to Reddit."""
-
-    code = "REDDIT_API_ERROR"
-    http_status = 504
-    retryable = True
-
-
-# --------------------------------------------------------------------------------------
-# Reddit RSS errors -- the unauthenticated transport (app/reddit/rss_client.py and
-# friends). Deliberately a separate hierarchy from RedditAPIError above: distinct error
-# codes so a caller can tell which transport failed, per the RSS integration contract.
+# Reddit RSS errors -- this service's only Reddit transport (app/reddit/rss_client.py
+# and friends). Public, unauthenticated .rss/.atom endpoints; no OAuth involved.
 # --------------------------------------------------------------------------------------
 class RedditRssError(RedditServiceError):
     """Base class for failures returned by (or while talking to) Reddit's public RSS."""
@@ -300,6 +116,13 @@ class RedditRssInvalidSubredditError(RedditRssError):
     """The caller's subreddit name(s) failed validation."""
 
     code = "REDDIT_RSS_INVALID_SUBREDDIT"
+    http_status = 422
+
+
+class RedditRssInvalidUsernameError(RedditRssError):
+    """The caller's username failed validation."""
+
+    code = "REDDIT_RSS_INVALID_USERNAME"
     http_status = 422
 
 

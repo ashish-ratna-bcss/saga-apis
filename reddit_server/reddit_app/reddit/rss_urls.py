@@ -1,11 +1,7 @@
 """URL construction for Reddit's public, unauthenticated RSS/Atom endpoints.
 
-Independent of ``app/reddit/rest_client.py``'s OAuth URL construction -- different
-host, no token, no per-token rate-limit bucket, no coupling to OAuth's request
-path. Subreddit-*name* validation is the one thing reused from
-``app.reddit.urls``: it is pure string validation with zero HTTP/OAuth
-involvement, so a subreddit name is a subreddit name regardless of which
-transport eventually reads it.
+Subreddit/username *name* validation is reused from ``app.reddit.urls``: pure
+string validation with zero HTTP involvement.
 
 SSRF note: every function here builds a path/query from validated, bounded
 inputs (subreddit names, an enum sort, an enum time range, a clamped limit).
@@ -17,9 +13,13 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from reddit_app.core.exceptions import RedditRssInvalidQueryError, RedditRssInvalidSubredditError
+from reddit_app.core.exceptions import (
+    RedditRssInvalidQueryError,
+    RedditRssInvalidSubredditError,
+    RedditRssInvalidUsernameError,
+)
 from reddit_app.core.exceptions import ValidationError as _ValidationError
-from reddit_app.reddit.urls import normalize_subreddit_names
+from reddit_app.reddit.urls import normalize_subreddit_names, normalize_username
 
 #: Valid ``sort`` values for Reddit's search.rss (mirrors the OAuth search API).
 RSS_SEARCH_SORTS = frozenset({"relevance", "hot", "top", "new", "comments"})
@@ -27,6 +27,11 @@ RSS_SEARCH_SORTS = frozenset({"relevance", "hot", "top", "new", "comments"})
 RSS_LISTING_SORTS = frozenset({"new", "hot", "top", "rising", "controversial"})
 #: Valid ``t`` (time filter) values, search.rss only -- listings don't take one.
 RSS_TIMES = frozenset({"hour", "day", "week", "month", "year", "all"})
+#: Valid ``kind`` (profile tab) values for a user-activity .rss feed.
+RSS_USER_KINDS = frozenset({"overview", "submitted", "comments"})
+#: Valid ``sort`` query values for a user-activity .rss feed -- a profile has no
+#: "relevance" (nothing to rank against, unlike search.rss).
+RSS_USER_SORTS = frozenset({"new", "hot", "top", "controversial"})
 
 MAX_SUBREDDITS = 25
 MAX_QUERY_LEN = 512
@@ -114,4 +119,50 @@ def build_listing_url(*, subreddits: str, sort: str, limit: int) -> tuple[str, d
         )
     path = f"/r/{quote(subreddits, safe='+')}/{sort}.rss"
     params = {"limit": str(max(1, min(int(limit), MAX_RSS_LIMIT)))}
+    return path, params
+
+
+def normalize_rss_username(raw: str) -> str:
+    """Like :func:`normalize_subreddit_names`, but for a single Reddit username --
+    accepts "someuser", "u/someuser", "/u/someuser/"."""
+
+    try:
+        return normalize_username(raw)
+    except _ValidationError as exc:
+        raise RedditRssInvalidUsernameError(exc.message, details=exc.details) from exc
+
+
+def build_user_url(
+    *, username: str, kind: str, sort: str, time_range: str, limit: int
+) -> tuple[str, dict[str, str]]:
+    """``GET /user/{username}/.rss`` (``kind="overview"``, Reddit's own path for
+    it -- note the leading dot, not a typo) or ``GET /user/{username}/{kind}.rss``
+    for ``"submitted"``/``"comments"`` -- profile activity feeds, no auth. Same
+    unauthenticated host/endpoint family as ``build_search_url``/
+    ``build_listing_url``, just scoped to one redditor instead of a
+    subreddit/search."""
+
+    if not username or not username.strip():
+        raise RedditRssInvalidUsernameError("username is required")
+    if kind not in RSS_USER_KINDS:
+        raise RedditRssInvalidQueryError(
+            f"Unsupported kind '{kind}'", details={"kind": kind, "allowed": sorted(RSS_USER_KINDS)}
+        )
+    if sort not in RSS_USER_SORTS:
+        raise RedditRssInvalidQueryError(
+            f"Unsupported sort '{sort}'",
+            details={"sort": sort, "allowed": sorted(RSS_USER_SORTS)},
+        )
+    if time_range not in RSS_TIMES:
+        raise RedditRssInvalidQueryError(
+            f"Unsupported time_range '{time_range}'",
+            details={"time_range": time_range, "allowed": sorted(RSS_TIMES)},
+        )
+    suffix = "" if kind == "overview" else kind
+    path = f"/user/{quote(username, safe='')}/{suffix}.rss"
+    params = {
+        "sort": sort,
+        "t": time_range,
+        "limit": str(max(1, min(int(limit), MAX_RSS_LIMIT))),
+    }
     return path, params
