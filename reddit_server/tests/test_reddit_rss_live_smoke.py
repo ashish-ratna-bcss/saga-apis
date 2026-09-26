@@ -14,6 +14,7 @@ import os
 import pytest
 
 from reddit_app.core.config import Settings
+from reddit_app.reddit.feed_cache import FeedCache
 from reddit_app.reddit.rss_client import RedditRssClient
 from reddit_app.services.reddit_rss_service import RedditRssService
 
@@ -23,14 +24,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-async def test_live_reddit_rss_search_without_oauth_credentials() -> None:
-    settings = Settings(
-        _env_file=None, reddit_client_id="", reddit_client_secret="", reddit_user_agent=""
-    )
-    assert not settings.reddit_configured  # the whole point: no OAuth is configured
+async def test_live_reddit_rss_search_with_zero_configuration() -> None:
+    settings = Settings(_env_file=None)  # the whole point: no config at all is needed
 
     client = RedditRssClient(settings)
-    service = RedditRssService(client, event_threshold=settings.reddit_rss_event_threshold)
+    feed_cache = FeedCache(
+        ttl_seconds=settings.reddit_rss_cache_ttl_seconds,
+        max_entries=settings.reddit_rss_cache_max_entries,
+    )
+    service = RedditRssService(client, feed_cache, event_threshold=settings.reddit_rss_event_threshold)
     await client.start()
     try:
         result = await service.monitor(query="python", limit=5)

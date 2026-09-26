@@ -1,9 +1,7 @@
-"""Request/response shapes for the unauthenticated Reddit RSS transport.
+"""Request/response shapes for the Reddit RSS transport.
 
-Independent of ``app/schemas/post.py`` (the OAuth transport's ``PostOut``): RSS
-exposes fewer and differently-shaped fields than Reddit's authenticated API (no
-score, no comment count, no upvote ratio -- Atom feeds don't carry them), so this
-is its own normalized shape rather than a reuse of ``PostOut``.
+RSS exposes fewer and differently-shaped fields than Reddit's REST API (no
+score, no comment count, no upvote ratio -- Atom feeds don't carry them).
 """
 
 from __future__ import annotations
@@ -17,6 +15,8 @@ from reddit_app.services.reddit_rss_service import DEFAULT_EVENT_KEYWORDS, DEFAU
 RssSort = Literal["relevance", "hot", "top", "new", "comments"]
 RssTimeRange = Literal["hour", "day", "week", "month", "year", "all"]
 RssMatchField = Literal["title", "full"]
+RssUserKind = Literal["overview", "submitted", "comments"]
+RssUserSort = Literal["new", "hot", "top", "controversial"]
 
 
 class RssPostOut(BaseModel):
@@ -188,3 +188,80 @@ class RssMonitorResponse(BaseModel):
 
 class RssEventResponse(RssMonitorResponse):
     event_signal: EventSignalOut
+
+
+class RssUserMonitorRequest(BaseModel):
+    """``POST /api/reddit/rss/user``. ``username`` alone is a complete request --
+    ``keywords``/``strong_keywords``/``exclude`` are optional narrowing filters
+    over that redditor's activity, not a requirement like ``monitor()``'s
+    query/keywords."""
+
+    username: str = Field(..., min_length=1, max_length=32)
+    kind: RssUserKind = Field(
+        default="overview",
+        description=(
+            "'overview' is posts+comments combined, 'submitted' is posts only, "
+            "'comments' is comments only."
+        ),
+    )
+    keywords: list[str] = Field(
+        default_factory=list,
+        max_length=25,
+        description="Optional. Only annotates matched_keywords/signal -- never narrows the feed itself.",
+    )
+    strong_keywords: list[str] = Field(
+        default_factory=list,
+        max_length=25,
+        description="Any match here sets signal=true regardless of min_matches.",
+    )
+    exclude: list[str] = Field(
+        default_factory=list,
+        max_length=25,
+        description="A post/comment matching any of these is dropped from the results entirely.",
+    )
+    match_field: RssMatchField = Field(
+        default="full",
+        description="'title' matches only the post title; 'full' also checks content/flair.",
+    )
+    min_matches: int = Field(
+        default=1,
+        ge=1,
+        description="Minimum matched_keywords count (excluding strong_keywords) for signal=true.",
+    )
+    sort: RssUserSort = "new"
+    time_range: RssTimeRange = "all"
+    from_date: str | None = Field(
+        default=None,
+        description="ISO 8601 date/datetime, applied client-side against each item's published_at.",
+    )
+    to_date: str | None = Field(
+        default=None,
+        description="ISO 8601 date/datetime; a bare date means through the end of that day.",
+    )
+    limit: int = Field(default=25, ge=1, le=100)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "username": "spez",
+                "kind": "overview",
+                "keywords": ["reddit", "AMA"],
+                "sort": "new",
+                "limit": 25,
+            }
+        }
+    )
+
+
+class RssUserMonitorResponse(BaseModel):
+    source: Literal["reddit"] = "reddit"
+    transport: Literal["rss"] = "rss"
+    authenticated: Literal[False] = False
+    username: str
+    kind: str
+    sort: str
+    time_range: str
+    from_date: str | None = None
+    to_date: str | None = None
+    count: int
+    posts: list[RssPostOut]

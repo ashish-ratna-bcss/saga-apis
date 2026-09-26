@@ -1,29 +1,21 @@
 """FastAPI application factory, lifespan and error handling.
 
-Two independent Reddit transports live here, both under ``/api/reddit/*`` and
-both behind the same ``X-API-Key`` policy:
-
-- ``/api/reddit/*`` (except ``/rss/*``) -- the authenticated OAuth2 REST API.
-  Requires ``REDDIT_CLIENT_ID``/``REDDIT_CLIENT_SECRET``/``REDDIT_USER_AGENT``.
-- ``/api/reddit/rss/*`` -- Reddit's public, unauthenticated RSS/Atom endpoints.
-  Requires none of the above; works even when Reddit OAuth is not configured.
+This service has exactly one Reddit transport: ``/api/reddit/rss/*``, Reddit's
+public, unauthenticated RSS/Atom feeds. There is no OAuth client, no Reddit
+credentials anywhere in this codebase -- it works from a bare checkout with no
+``.env`` at all.
 
 Startup order
 -------------
 1. Load configuration and configure logging (with secret redaction).
-2. Initialize both Reddit clients (HTTP clients only; the OAuth client requests no
-   token yet -- the first real request authenticates lazily; the RSS client never
-   authenticates at all).
-3. If OAuth is configured, perform one best-effort OAuth2 authentication so a
-   broken credential shows up in the startup log immediately rather than on the
-   first call. Skipped for RSS -- there is no credential to check.
+2. Start the RSS HTTP client (no authentication step -- there is nothing to
+   authenticate).
 
-Shutdown closes both clients' HTTP connections.
+Shutdown closes the RSS client's HTTP connection.
 
 This service is intentionally stateless: no database, no scheduler, no
 ``/monitoring/start``/``/stop`` lifecycle. SOC Eye owns polling/storage/alerts and
-calls this service's endpoints (subreddit/search/post/comment/user/resolve/rss/*) on
-its own schedule -- see app/services/provider_service.py and
+calls this service's endpoints on its own schedule -- see
 app/services/reddit_rss_service.py for why.
 """
 
@@ -40,16 +32,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from reddit_app.api.routes_comment import router as comment_router
 from reddit_app.api.routes_health import SERVICE_VERSION
 from reddit_app.api.routes_health import router as health_router
-from reddit_app.api.routes_post import router as post_router
 from reddit_app.api.routes_reddit_rss import router as reddit_rss_router
-from reddit_app.api.routes_resolve import router as resolve_router
-from reddit_app.api.routes_search import router as search_router
-from reddit_app.api.routes_status import router as status_router
-from reddit_app.api.routes_subreddit import router as subreddit_router
-from reddit_app.api.routes_user import router as user_router
 from reddit_app.core.config import Settings, get_settings
 from reddit_app.core.exceptions import RedditServiceError
 from reddit_app.core.logging import configure_logging, get_logger, register_secret
@@ -60,20 +45,15 @@ from reddit_app.reddit.client import RedditClientManager
 logger = get_logger(__name__)
 
 DESCRIPTION = """
-Standalone Reddit data-provider service for SOC Eye.
+Standalone Reddit RSS provider service for SOC Eye.
 
-Two independent Reddit transports:
+**`/api/reddit/rss/*`** -- keyword/event/profile monitoring through Reddit's
+**public, unauthenticated RSS/Atom feeds**. Requires no Reddit credentials at
+all, is a public search interface (not the official OAuth API), and is subject
+to Reddit's own RSS availability/rate limits.
 
-- **`/api/reddit/*`** (except `/rss/*`) -- fetches public Reddit data (subreddits,
-  posts, comments, users, search) through the **official Reddit OAuth2 API** and
-  returns stable, normalized JSON. Requires Reddit OAuth credentials.
-- **`/api/reddit/rss/*`** -- keyword/event monitoring through Reddit's **public,
-  unauthenticated RSS/Atom feeds**. Requires no Reddit credentials at all, is a
-  public search interface (not the official API), and is subject to Reddit's own
-  RSS availability/rate limits.
-
-Both own Reddit connectivity, pagination/parsing and rate-limit/retry handling;
-both deliberately own nothing else -- no storage, no deduplication across
+Owns Reddit connectivity, pagination/parsing and rate-limit/retry handling;
+deliberately owns nothing else -- no storage, no deduplication across
 requests, no polling scheduler, no alerting, no UI. SOC Eye owns all of that and
 calls this service's endpoints on its own schedule.
 """
@@ -81,7 +61,7 @@ calls this service's endpoints on its own schedule.
 
 def _startup_banner(settings: Settings) -> None:
     logger.info(
-        "Starting Reddit provider service",
+        "Starting Reddit RSS provider service",
         extra={"version": SERVICE_VERSION, **settings.public_summary()},
     )
 
@@ -103,23 +83,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("API authentication enabled", extra={"configured_keys": len(settings.api_key_list)})
 
     await clients.start()
-    if settings.reddit_configured:
-        try:
-            await clients.rest.ensure_token()
-        except Exception:  # noqa: BLE001 - never block startup on Reddit
-            logger.error("Could not authenticate with Reddit at startup", exc_info=True)
-    else:
-        logger.warning(
-            "Reddit OAuth credentials are not configured. Every /api/reddit/* endpoint "
-            "except /api/reddit/rss/* will return 503 REDDIT_NOT_CONFIGURED. "
-            "/api/reddit/rss/* needs no Reddit credentials and remains fully usable."
-        )
-
     logger.info("Startup complete")
     try:
         yield
     finally:
-        logger.info("Shutting down Reddit provider service")
+        logger.info("Shutting down Reddit RSS provider service")
         await clients.close()
         logger.info("Shutdown complete")
 
@@ -127,48 +95,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(
     settings: Settings | None = None,
     *,
-    transport: httpx.AsyncBaseTransport | None = None,
-    token_transport: httpx.AsyncBaseTransport | None = None,
     rss_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     """Build the FastAPI application.
 
-    ``transport``/``token_transport``/``rss_transport`` let tests substitute the
-    OAuth REST API and the public RSS host without patching globals or touching
-    the network.
+    ``rss_transport`` lets tests substitute Reddit's public RSS host without
+    patching globals or touching the network.
     """
 
     settings = settings or get_settings()
     configure_logging(settings.log_level, json_logs=settings.log_json)
-    register_secret(settings.client_secret)
-    register_secret(settings.password)
     register_secret(settings.reddit_rss_feed_value)
     register_api_key_secrets(settings)
 
     app = FastAPI(
-        title="Reddit Provider Service",
+        title="Reddit RSS Provider Service",
         description=DESCRIPTION,
         version=SERVICE_VERSION,
         lifespan=lifespan,
         openapi_tags=[
-            {"name": "health", "description": "Service liveness and configuration checks."},
-            {
-                "name": "reddit",
-                "description": (
-                    "Subreddit/post/comment/user lookup, search, and URL resolution via the "
-                    "official OAuth2 API. Stateless: every call reads live from Reddit. "
-                    "Requires Reddit OAuth credentials."
-                ),
-            },
+            {"name": "health", "description": "Service liveness and readiness checks."},
             {
                 "name": "reddit-rss",
                 "description": (
-                    "Keyword/event monitoring via Reddit's public, unauthenticated RSS/Atom "
-                    "feeds. authenticated=false in every response: no Reddit OAuth credentials "
-                    "are read or required. Still governed by this service's own X-API-Key "
-                    "policy, same as every other /api/reddit/* route, plus a per-caller request "
-                    "budget (see the RSS integration docs). A shared, short-TTL raw-feed cache "
-                    "means concurrent callers requesting the same feed share one Reddit fetch; "
+                    "Keyword/event/profile monitoring via Reddit's public, unauthenticated "
+                    "RSS/Atom feeds. authenticated=false in every response: no Reddit OAuth "
+                    "credentials exist in this service at all. Still governed by this "
+                    "service's own X-API-Key policy, plus a per-caller request budget (see "
+                    "the RSS integration docs). A shared, short-TTL raw-feed cache means "
+                    "concurrent callers requesting the same feed share one Reddit fetch; "
                     "filtering is still computed fresh per call, and no polling loop or "
                     "cross-request result deduplication is done on the caller's behalf."
                 ),
@@ -176,9 +131,7 @@ def create_app(
         ],
     )
 
-    clients = RedditClientManager(
-        settings, transport=transport, token_transport=token_transport, rss_transport=rss_transport
-    )
+    clients = RedditClientManager(settings, rss_transport=rss_transport)
 
     app.state.settings = settings
     app.state.clients = clients
@@ -199,17 +152,9 @@ def create_app(
         logger.info("CORS enabled", extra={"origins": len(settings.cors_origin_list)})
 
     app.include_router(health_router)
-    api_key_dependency = [Depends(require_api_key)]
-    app.include_router(status_router, dependencies=api_key_dependency)
-    app.include_router(subreddit_router, dependencies=api_key_dependency)
-    app.include_router(post_router, dependencies=api_key_dependency)
-    app.include_router(comment_router, dependencies=api_key_dependency)
-    app.include_router(user_router, dependencies=api_key_dependency)
-    app.include_router(search_router, dependencies=api_key_dependency)
-    app.include_router(resolve_router, dependencies=api_key_dependency)
     app.include_router(
         reddit_rss_router,
-        dependencies=[*api_key_dependency, Depends(rate_limit_rss_client)],
+        dependencies=[Depends(require_api_key), Depends(rate_limit_rss_client)],
     )
     _register_exception_handlers(app)
     return app

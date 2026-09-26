@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from reddit_app.core.exceptions import RedditRssInvalidQueryError, RedditRssInvalidSubredditError
+from reddit_app.core.exceptions import (
+    RedditRssInvalidQueryError,
+    RedditRssInvalidSubredditError,
+    RedditRssInvalidUsernameError,
+)
 from reddit_app.services.reddit_rss_service import (
     DEFAULT_EVENT_KEYWORDS,
     DEFAULT_EVENT_SUBREDDITS,
@@ -262,3 +266,99 @@ async def test_event_signal_never_claims_a_confirmed_event(rss_service: RedditRs
         "matched_keywords",
         "threshold",
     }
+
+
+async def test_user_overview_default(
+    rss_service: RedditRssService, fake_reddit_rss: FakeRedditRss
+) -> None:
+    result = await rss_service.user(username="spez")
+    assert result["source"] == "reddit"
+    assert result["transport"] == "rss"
+    assert result["authenticated"] is False
+    assert result["username"] == "spez"
+    assert result["kind"] == "overview"
+    assert result["count"] == 1
+    path, _ = fake_reddit_rss.calls[-1]
+    assert path == "/user/spez/.rss"
+
+
+async def test_user_accepts_u_prefixed_username(
+    rss_service: RedditRssService, fake_reddit_rss: FakeRedditRss
+) -> None:
+    await rss_service.user(username="u/spez")
+    path, _ = fake_reddit_rss.calls[-1]
+    assert path == "/user/spez/.rss"
+
+
+async def test_user_submitted_kind_builds_submitted_path(
+    rss_service: RedditRssService, fake_reddit_rss: FakeRedditRss
+) -> None:
+    await rss_service.user(username="spez", kind="submitted")
+    path, _ = fake_reddit_rss.calls[-1]
+    assert path == "/user/spez/submitted.rss"
+
+
+async def test_user_rejects_invalid_username(rss_service: RedditRssService) -> None:
+    with pytest.raises(RedditRssInvalidUsernameError):
+        await rss_service.user(username="has a space")
+
+
+async def test_user_rejects_bad_kind(rss_service: RedditRssService) -> None:
+    with pytest.raises(RedditRssInvalidQueryError):
+        await rss_service.user(username="spez", kind="bogus")
+
+
+async def test_user_keywords_annotate_without_narrowing_the_feed(
+    rss_service: RedditRssService,
+) -> None:
+    """Unlike monitor(), keywords on user() never become the Reddit query --
+    the username alone already selects the feed; keywords only annotate."""
+
+    result = await rss_service.user(username="spez", keywords=["example"])
+    assert result["count"] == 1
+    assert result["posts"][0]["matched_keywords"] == ["example"]
+
+    no_keywords = await rss_service.user(username="spez")
+    assert no_keywords["count"] == 1
+    assert no_keywords["posts"][0]["matched_keywords"] == []
+
+
+async def test_user_exclude_drops_matching_posts(rss_service: RedditRssService) -> None:
+    result = await rss_service.user(username="spez", exclude=["example"])
+    assert result["count"] == 0
+
+
+async def test_user_strong_keywords_force_signal(rss_service: RedditRssService) -> None:
+    result = await rss_service.user(username="spez", strong_keywords=["example"], min_matches=99)
+    assert result["posts"][0]["signal"] is True
+
+
+async def test_user_date_filter_excludes_posts_outside_range(
+    rss_service: RedditRssService, fake_reddit_rss: FakeRedditRss
+) -> None:
+    fake_reddit_rss.default_feed = atom_feed(
+        [
+            atom_entry(post_id="early", published="2026-07-01T10:00:00+00:00"),
+            atom_entry(post_id="inrange", published="2026-08-15T10:00:00+00:00"),
+        ]
+    )
+    result = await rss_service.user(username="spez", from_date="2026-08-01", to_date="2026-08-31")
+    assert result["count"] == 1
+    assert result["posts"][0]["id"] == "inrange"
+
+
+async def test_user_shares_cached_feed_across_calls_with_identical_params(
+    rss_service: RedditRssService, fake_reddit_rss: FakeRedditRss
+) -> None:
+    await rss_service.user(username="spez")
+    await rss_service.user(username="spez")
+    assert len(fake_reddit_rss.calls_to("/user/spez/.rss")) == 1
+
+
+async def test_user_different_kinds_each_get_their_own_fetch(
+    rss_service: RedditRssService, fake_reddit_rss: FakeRedditRss
+) -> None:
+    await rss_service.user(username="spez", kind="overview")
+    await rss_service.user(username="spez", kind="submitted")
+    assert len(fake_reddit_rss.calls_to("/user/spez/.rss")) == 1
+    assert len(fake_reddit_rss.calls_to("/user/spez/submitted.rss")) == 1

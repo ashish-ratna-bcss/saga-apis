@@ -2,8 +2,18 @@ from __future__ import annotations
 
 import pytest
 
-from reddit_app.core.exceptions import RedditRssInvalidQueryError, RedditRssInvalidSubredditError
-from reddit_app.reddit.rss_urls import build_listing_url, build_search_url, normalize_rss_subreddits
+from reddit_app.core.exceptions import (
+    RedditRssInvalidQueryError,
+    RedditRssInvalidSubredditError,
+    RedditRssInvalidUsernameError,
+)
+from reddit_app.reddit.rss_urls import (
+    build_listing_url,
+    build_search_url,
+    build_user_url,
+    normalize_rss_subreddits,
+    normalize_rss_username,
+)
 
 
 def test_normalize_rss_subreddits_none() -> None:
@@ -106,3 +116,60 @@ def test_build_listing_url() -> None:
 def test_build_listing_url_rejects_bad_sort() -> None:
     with pytest.raises(RedditRssInvalidQueryError):
         build_listing_url(subreddits="india", sort="relevance", limit=25)
+
+
+def test_normalize_rss_username_accepts_bare_and_prefixed() -> None:
+    assert normalize_rss_username("someuser") == "someuser"
+    assert normalize_rss_username("u/someuser") == "someuser"
+    assert normalize_rss_username("/u/someuser/") == "someuser"
+
+
+def test_normalize_rss_username_rejects_invalid() -> None:
+    with pytest.raises(RedditRssInvalidUsernameError):
+        normalize_rss_username("has a space")
+
+
+def test_build_user_url_overview() -> None:
+    path, params = build_user_url(
+        username="spez", kind="overview", sort="new", time_range="all", limit=25
+    )
+    assert path == "/user/spez/.rss"
+    assert params == {"sort": "new", "t": "all", "limit": "25"}
+
+
+def test_build_user_url_submitted() -> None:
+    path, _ = build_user_url(
+        username="spez", kind="submitted", sort="top", time_range="year", limit=10
+    )
+    assert path == "/user/spez/submitted.rss"
+
+
+def test_build_user_url_comments() -> None:
+    path, _ = build_user_url(
+        username="spez", kind="comments", sort="new", time_range="all", limit=10
+    )
+    assert path == "/user/spez/comments.rss"
+
+
+def test_build_user_url_rejects_bad_kind() -> None:
+    with pytest.raises(RedditRssInvalidQueryError):
+        build_user_url(username="spez", kind="bogus", sort="new", time_range="all", limit=25)
+
+
+def test_build_user_url_rejects_bad_sort() -> None:
+    with pytest.raises(RedditRssInvalidQueryError):
+        build_user_url(
+            username="spez", kind="overview", sort="relevance", time_range="all", limit=25
+        )
+
+
+def test_build_user_url_rejects_empty_username() -> None:
+    with pytest.raises(RedditRssInvalidUsernameError):
+        build_user_url(username="", kind="overview", sort="new", time_range="all", limit=25)
+
+
+def test_build_user_url_clamps_limit() -> None:
+    _, params = build_user_url(
+        username="spez", kind="overview", sort="new", time_range="all", limit=99999
+    )
+    assert params["limit"] == "100"

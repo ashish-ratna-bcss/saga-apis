@@ -10,5 +10,4 @@ class HealthResponse(BaseModel):
 
 
 class ReadyResponse(BaseModel):
-    status: str
-    reddit_configured: bool
+    status: str = "ok"

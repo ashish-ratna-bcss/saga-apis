@@ -1,9 +1,7 @@
-"""Route-level tests for the unauthenticated Reddit RSS transport.
-
-Includes the mandatory proof (AC-02/AC-15) that ``/api/reddit/rss/*`` works when
-Reddit OAuth credentials are completely absent -- see
-``test_rss_works_without_any_reddit_oauth_credentials`` below.
-"""
+"""Route-level tests for the Reddit RSS transport -- this service's only Reddit
+transport. There is no Reddit OAuth path to prove independence from any more;
+these tests just prove the RSS routes work with no Reddit credentials at all,
+which is the only mode that exists."""
 
 from __future__ import annotations
 
@@ -12,7 +10,6 @@ from fastapi.testclient import TestClient
 
 from reddit_app.core.config import Settings
 from reddit_app.main import create_app
-from tests.fake_reddit import FakeReddit
 from tests.fake_reddit_rss import FakeRedditRss, atom_entry, atom_feed
 
 
@@ -161,25 +158,12 @@ def test_rss_event_overrides(app_client) -> None:
     assert body["query"] == "example"
 
 
-def test_rss_endpoints_require_this_services_own_api_key(
-    fake_reddit: FakeReddit, fake_reddit_rss: FakeRedditRss
-) -> None:
-    """RSS routes carry the same X-API-Key gate as every other /api/reddit/* route
-    -- Reddit auth is skipped, this service's own auth policy is not."""
+def test_rss_endpoints_require_this_services_own_api_key(fake_reddit_rss: FakeRedditRss) -> None:
+    """RSS routes carry the same X-API-Key gate as every other /api/reddit/*
+    route, even though Reddit itself needs none."""
 
-    settings = Settings(
-        _env_file=None,
-        reddit_client_id="id",
-        reddit_client_secret="secret",
-        reddit_user_agent="ua",
-        api_keys="test-key",
-    )
-    app = create_app(
-        settings,
-        transport=fake_reddit.api_transport(),
-        token_transport=fake_reddit.token_transport(),
-        rss_transport=fake_reddit_rss.transport(),
-    )
+    settings = Settings(_env_file=None, api_keys="test-key")
+    app = create_app(settings, rss_transport=fake_reddit_rss.transport())
     with TestClient(app) as client:
         response = client.post("/api/reddit/rss/monitor", json={"query": "protest"})
         assert response.status_code == 401
@@ -197,8 +181,76 @@ def test_rss_appears_in_openapi_with_reddit_rss_tag(app_client) -> None:
     assert "/api/reddit/rss/monitor" in schema["paths"]
     assert "/api/reddit/rss/search" in schema["paths"]
     assert "/api/reddit/rss/event" in schema["paths"]
+    assert "/api/reddit/rss/user" in schema["paths"]
     tag_names = {tag["name"] for tag in schema.get("tags", [])}
     assert "reddit-rss" in tag_names
+
+
+def test_rss_user_overview_default(app_client, fake_reddit_rss: FakeRedditRss) -> None:
+    response = app_client.post("/api/reddit/rss/user", json={"username": "spez"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "reddit"
+    assert body["transport"] == "rss"
+    assert body["authenticated"] is False
+    assert body["username"] == "spez"
+    assert body["kind"] == "overview"
+    assert body["count"] == 1
+    path, _ = fake_reddit_rss.calls[-1]
+    assert path == "/user/spez/.rss"
+
+
+def test_rss_user_submitted_kind(app_client, fake_reddit_rss: FakeRedditRss) -> None:
+    response = app_client.post(
+        "/api/reddit/rss/user", json={"username": "spez", "kind": "submitted"}
+    )
+    assert response.status_code == 200
+    path, _ = fake_reddit_rss.calls[-1]
+    assert path == "/user/spez/submitted.rss"
+
+
+def test_rss_user_rejects_invalid_username(app_client) -> None:
+    response = app_client.post("/api/reddit/rss/user", json={"username": "has a space"})
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "REDDIT_RSS_INVALID_USERNAME"
+
+
+def test_rss_user_rejects_bad_kind(app_client) -> None:
+    response = app_client.post(
+        "/api/reddit/rss/user", json={"username": "spez", "kind": "bogus"}
+    )
+    assert response.status_code == 422
+
+
+def test_rss_user_keywords_annotate_matched_posts(app_client) -> None:
+    response = app_client.post(
+        "/api/reddit/rss/user", json={"username": "spez", "keywords": ["example"]}
+    )
+    body = response.json()
+    assert body["posts"][0]["matched_keywords"] == ["example"]
+
+
+def test_rss_user_exclude_drops_matching_posts(app_client) -> None:
+    response = app_client.post(
+        "/api/reddit/rss/user", json={"username": "spez", "exclude": ["example"]}
+    )
+    body = response.json()
+    assert body["count"] == 0
+
+
+def test_rss_user_requires_this_services_own_api_key(fake_reddit_rss: FakeRedditRss) -> None:
+    settings = Settings(_env_file=None, api_keys="test-key")
+    app = create_app(settings, rss_transport=fake_reddit_rss.transport())
+    with TestClient(app) as client:
+        response = client.post("/api/reddit/rss/user", json={"username": "spez"})
+        assert response.status_code == 401
+
+        response = client.post(
+            "/api/reddit/rss/user",
+            json={"username": "spez"},
+            headers={"X-API-Key": "test-key"},
+        )
+        assert response.status_code == 200
 
 
 def test_rss_error_mapping_403_forbidden(app_client, fake_reddit_rss: FakeRedditRss) -> None:
@@ -247,29 +299,12 @@ def test_rss_empty_feed_is_a_valid_empty_result_not_an_error(
     assert body["posts"] == []
 
 
-def test_rss_works_without_any_reddit_oauth_credentials(fake_reddit_rss: FakeRedditRss) -> None:
-    """AC-02 / AC-15: the RSS path must reach Reddit RSS without OAuth token
-    acquisition, proving RSS path != OAuth path. No FakeReddit (OAuth transport)
-    is even constructed here -- only the RSS transport is wired up, and Reddit
-    OAuth credentials are left entirely absent."""
+def test_rss_works_with_zero_configuration(fake_reddit_rss: FakeRedditRss) -> None:
+    """The whole point of this service: it comes up and serves RSS requests from
+    a completely default Settings() -- no .env, no credentials, nothing set."""
 
-    settings = Settings(
-        _env_file=None,
-        reddit_client_id="",
-        reddit_client_secret="",
-        reddit_user_agent="",
-    )
-    assert not settings.reddit_configured
-
-    def oauth_should_never_be_called(request: httpx.Request) -> httpx.Response:
-        raise AssertionError(f"OAuth transport was called unexpectedly: {request.url}")
-
-    app = create_app(
-        settings,
-        transport=httpx.MockTransport(oauth_should_never_be_called),
-        token_transport=httpx.MockTransport(oauth_should_never_be_called),
-        rss_transport=fake_reddit_rss.transport(),
-    )
+    settings = Settings(_env_file=None)
+    app = create_app(settings, rss_transport=fake_reddit_rss.transport())
     with TestClient(app) as client:
         response = client.post(
             "/api/reddit/rss/monitor",
@@ -288,10 +323,7 @@ def test_rss_works_without_any_reddit_oauth_credentials(fake_reddit_rss: FakeRed
     assert fake_reddit_rss.calls, "the RSS transport should have been hit"
 
 
-def test_rss_monitor_matches_oauth_style_error_envelope(app_client) -> None:
-    """Same {"error": {"code": ..., "message": ...}} shape as the OAuth transport
-    -- one error model across both, per the RSS integration contract."""
-
+def test_rss_monitor_error_envelope_shape(app_client) -> None:
     response = app_client.post("/api/reddit/rss/monitor", json={})
     body = response.json()
     assert set(body.keys()) == {"error"}
@@ -299,18 +331,13 @@ def test_rss_monitor_matches_oauth_style_error_envelope(app_client) -> None:
 
 
 def test_rss_shares_one_fetch_across_callers_of_the_same_feed(
-    settings: Settings, fake_reddit: FakeReddit, fake_reddit_rss: FakeRedditRss
+    settings: Settings, fake_reddit_rss: FakeRedditRss
 ) -> None:
     """Layer 2 (feed cache): two callers hitting the identical feed within the
     TTL must only cause one outbound Reddit request -- not the whole app's
     other client-limiter/global-limiter machinery, just the cache itself."""
 
-    app = create_app(
-        settings,
-        transport=fake_reddit.api_transport(),
-        token_transport=fake_reddit.token_transport(),
-        rss_transport=fake_reddit_rss.transport(),
-    )
+    app = create_app(settings, rss_transport=fake_reddit_rss.transport())
     with TestClient(app) as client:
         first = client.post("/api/reddit/rss/monitor", json={"query": "protest"})
         second = client.post("/api/reddit/rss/monitor", json={"query": "protest"})
@@ -321,14 +348,9 @@ def test_rss_shares_one_fetch_across_callers_of_the_same_feed(
 
 
 def test_rss_different_feeds_each_get_their_own_fetch(
-    settings: Settings, fake_reddit: FakeReddit, fake_reddit_rss: FakeRedditRss
+    settings: Settings, fake_reddit_rss: FakeRedditRss
 ) -> None:
-    app = create_app(
-        settings,
-        transport=fake_reddit.api_transport(),
-        token_transport=fake_reddit.token_transport(),
-        rss_transport=fake_reddit_rss.transport(),
-    )
+    app = create_app(settings, rss_transport=fake_reddit_rss.transport())
     with TestClient(app) as client:
         client.post(
             "/api/reddit/rss/monitor", json={"query": "protest", "subreddits": ["india"]}
@@ -343,9 +365,6 @@ def test_rss_different_feeds_each_get_their_own_fetch(
 def test_rss_client_limiter_returns_429_with_retry_after(fake_reddit_rss: FakeRedditRss) -> None:
     settings = Settings(
         _env_file=None,
-        reddit_client_id="",
-        reddit_client_secret="",
-        reddit_user_agent="",
         reddit_rss_client_limit=3,
         reddit_rss_client_window_seconds=60.0,
     )
@@ -361,35 +380,9 @@ def test_rss_client_limiter_returns_429_with_retry_after(fake_reddit_rss: FakeRe
     assert blocked.json()["error"]["retry_after"] > 0
 
 
-def test_rss_client_limiter_does_not_affect_oauth_routes(fake_reddit: FakeReddit) -> None:
-    """Section 13: the per-caller RSS limiter must not leak onto unrelated
-    /api/reddit/* routes."""
-
-    settings = Settings(
-        _env_file=None,
-        reddit_client_id="id",
-        reddit_client_secret="secret",
-        reddit_user_agent="ua",
-        reddit_rss_client_limit=1,
-        reddit_rss_client_window_seconds=60.0,
-    )
-    app = create_app(
-        settings,
-        transport=fake_reddit.api_transport(),
-        token_transport=fake_reddit.token_transport(),
-    )
-    with TestClient(app) as client:
-        for _ in range(5):
-            response = client.post("/api/reddit/subreddit", json={"name": "india"})
-            assert response.status_code == 200
-
-
 def test_rss_client_limiter_isolates_different_callers(fake_reddit_rss: FakeRedditRss) -> None:
     settings = Settings(
         _env_file=None,
-        reddit_client_id="",
-        reddit_client_secret="",
-        reddit_user_agent="",
         reddit_rss_client_limit=1,
         reddit_rss_client_window_seconds=60.0,
     )
@@ -448,17 +441,12 @@ def test_rss_match_field_title_only(app_client, fake_reddit_rss: FakeRedditRss) 
 
 
 def test_rss_request_isolation_across_concurrent_callers(
-    settings: Settings, fake_reddit: FakeReddit, fake_reddit_rss: FakeRedditRss
+    settings: Settings, fake_reddit_rss: FakeRedditRss
 ) -> None:
-    """Section 23/24: two callers sharing one cached feed must each get their
-    own, independently-computed filtering result."""
+    """Two callers sharing one cached feed must each get their own,
+    independently-computed filtering result."""
 
-    app = create_app(
-        settings,
-        transport=fake_reddit.api_transport(),
-        token_transport=fake_reddit.token_transport(),
-        rss_transport=fake_reddit_rss.transport(),
-    )
+    app = create_app(settings, rss_transport=fake_reddit_rss.transport())
     with TestClient(app) as client:
         protest_view = client.post(
             "/api/reddit/rss/monitor", json={"query": "x", "keywords": ["example"]}

@@ -1,16 +1,11 @@
-"""The unauthenticated Reddit RSS transport: keyword/event monitoring without
-Reddit OAuth credentials.
-
-Independent of ``routes_search.py``/``routes_subreddit.py`` (the OAuth transport):
-these routes never read ``REDDIT_CLIENT_ID``/``REDDIT_CLIENT_SECRET`` and work
-when those are completely unset -- only ``RedditRssService``/``RedditRssClient``
-are involved. Reddit authentication is NOT required here; this service's own
-``X-API-Key`` application-level protection still applies (see ``app/main.py`` --
-this router carries the same ``require_api_key`` dependency as every other
-``/api/reddit/*`` router, plus ``rate_limit_rss_client`` -- a per-caller request
-budget scoped to this router alone, since it's the one guarding a shared,
-process-wide Reddit RSS acquisition path (see ``app/reddit/rate_limiter.py`` and
-``app/reddit/feed_cache.py``).
+"""Keyword/event/profile monitoring via Reddit's public RSS -- this service's
+only Reddit transport. No Reddit credentials of any kind are involved, only
+``RedditRssService``/``RedditRssClient``. This service's own ``X-API-Key``
+application-level protection still applies (see ``app/main.py`` -- this router
+carries the ``require_api_key`` dependency, plus ``rate_limit_rss_client`` -- a
+per-caller request budget scoped to this router, since it's the one guarding a
+shared, process-wide Reddit RSS acquisition path (see
+``app/reddit/rate_limiter.py`` and ``app/reddit/feed_cache.py``).
 
 ``POST /monitor`` and ``GET /search`` both call ``RedditRssService.monitor`` --
 there is deliberately one use-case, not duplicated logic per route.
@@ -32,6 +27,8 @@ from reddit_app.schemas.reddit_rss import (
     RssPostOut,
     RssSort,
     RssTimeRange,
+    RssUserMonitorRequest,
+    RssUserMonitorResponse,
 )
 
 router = APIRouter(prefix="/api/reddit/rss", tags=["reddit-rss"])
@@ -120,6 +117,29 @@ async def rss_search(
         limit=limit,
     )
     return RssMonitorResponse(**_to_response(result))
+
+
+@router.post(
+    "/user",
+    response_model=RssUserMonitorResponse,
+    summary="Profile activity monitoring via Reddit's public RSS (no Reddit credentials)",
+)
+async def rss_user(payload: RssUserMonitorRequest, service: RssServiceDep) -> RssUserMonitorResponse:
+    result = await service.user(
+        username=payload.username,
+        kind=payload.kind,
+        keywords=payload.keywords,
+        strong_keywords=payload.strong_keywords,
+        exclude=payload.exclude,
+        match_field=payload.match_field,
+        min_matches=payload.min_matches,
+        sort=payload.sort,
+        time_range=payload.time_range,
+        from_date=payload.from_date,
+        to_date=payload.to_date,
+        limit=payload.limit,
+    )
+    return RssUserMonitorResponse(**_to_response(result))
 
 
 @router.post(

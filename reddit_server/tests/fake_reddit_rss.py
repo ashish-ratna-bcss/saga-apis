@@ -1,9 +1,8 @@
 """An in-memory stand-in for Reddit's public RSS/Atom host.
 
-Mirrors ``fake_reddit.py``'s role for the OAuth transport: every RSS test runs
-against this, never real network. Reddit's ``.rss`` endpoints emit Atom XML (see
-``app/reddit/rss_parser.py``), so the fixtures here build real (if minimal) Atom
-documents rather than RSS 2.0.
+Every test in this suite runs against this, never real network. Reddit's
+``.rss`` endpoints emit Atom XML (see ``app/reddit/rss_parser.py``), so the
+fixtures here build real (if minimal) Atom documents rather than RSS 2.0.
 """
 
 from __future__ import annotations
