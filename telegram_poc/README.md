@@ -467,7 +467,7 @@ Specifically:
 ## 19. How to run locally
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn telegram_app.main:app --reload
 ```
 
 The scheduler (all 4 jobs) starts automatically as part of the app's
@@ -478,7 +478,7 @@ lifespan - there is no separate process to launch for a basic run.
 The scheduler is embedded in the FastAPI process (`app/main.py`'s
 `lifespan`) via `app/scheduler/jobs.py::setup_scheduler`, using
 `AsyncIOScheduler` so it shares the same event loop as the Telethon client
-and the API. Running `uvicorn app.main:app` is sufficient - there is no
+and the API. Running `uvicorn telegram_app.main:app` is sufficient - there is no
 separate scheduler binary in this PoC. Each job's cadence is configurable
 via the `*_INTERVAL_*` environment variables; every job carries
 `max_instances=1` so overlapping runs of the same job are refused, not

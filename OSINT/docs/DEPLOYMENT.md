@@ -9,7 +9,7 @@ The service has no authentication by design. Only deploy it on localhost, behind
 | Mode | Database | Worker model | When to use |
 |---|---|---|---|
 | SQLite local | `sqlite:///./osint.db` | In-process worker pool inside the API process | Single server, zero extra infrastructure |
-| PostgreSQL production | `postgresql+psycopg://...` | Separate API process plus one or more `python -m app.worker_main` processes | Multi-process or horizontally scaled deployments |
+| PostgreSQL production | `postgresql+psycopg://...` | Separate API process plus one or more `python -m osint_app.worker_main` processes | Multi-process or horizontally scaled deployments |
 | Docker compose | PostgreSQL | API container plus worker container(s) plus Postgres | Containerized production or staging |
 
 ## Runtime requirements
@@ -48,8 +48,8 @@ All configuration uses the `OSINT_` prefix from `app/config.py` and `.env.exampl
 | `OSINT_DATABASE_URL` | `sqlite:///./osint.db` | Database URL; selects SQLite local mode or PostgreSQL production mode |
 | `OSINT_SEARXNG_URL` | `http://127.0.0.1:8890` in `.env.example` | Base URL for the self-hosted SearxNG instance used by search and `public_web` |
 | `OSINT_SEARXNG_ENGINES` | `google,bing,brave,wikipedia` | Engine subset passed to SearxNG; empty string lets SearxNG use its own configured set |
-| `OSINT_HOST` | `127.0.0.1` | Host binding used by `python -m app.main` |
-| `OSINT_PORT` | `8000` | Port binding used by `python -m app.main` |
+| `OSINT_HOST` | `127.0.0.1` | Host binding used by `python -m osint_app.main` |
+| `OSINT_PORT` | `8000` | Port binding used by `python -m osint_app.main` |
 | `OSINT_WORKER_CONCURRENCY` | `4` | Worker loops per process in SQLite mode, and per standalone worker process in PostgreSQL mode |
 | `OSINT_ADAPTER_TIMEOUT_SECONDS` | `45` | Per-adapter HTTP timeout |
 | `OSINT_MAIGRET_TOP_SITES` | `300` | Top-ranked site cap for Maigret |
@@ -162,10 +162,10 @@ Then start the stack:
 Or start the API directly:
 
 ```bash
-./.venv/bin/python -m app.main
+./.venv/bin/python -m osint_app.main
 ```
 
-SQLite mode uses the in-process worker pool started by `app.main`'s lifespan hook. No separate worker process is needed.
+SQLite mode uses the in-process worker pool started by `osint_app.main`'s lifespan hook. No separate worker process is needed.
 
 ### SQLite permissions
 
@@ -206,16 +206,16 @@ The app does not auto-run migrations on startup. Apply them before starting the 
 Start the API:
 
 ```bash
-./.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port "$OSINT_PORT"
+./.venv/bin/uvicorn osint_app.main:app --host 0.0.0.0 --port "$OSINT_PORT"
 ```
 
 Start the worker process in a separate terminal, systemd unit, or container:
 
 ```bash
-./.venv/bin/python -m app.worker_main
+./.venv/bin/python -m osint_app.worker_main
 ```
 
-`app.worker_main` only works against PostgreSQL. It exits immediately if `OSINT_DATABASE_URL` still points at SQLite.
+`osint_app.worker_main` only works against PostgreSQL. It exits immediately if `OSINT_DATABASE_URL` still points at SQLite.
 
 `OSINT_WORKER_CONCURRENCY` controls how many worker loops each worker process starts. Increase it if you want more polling loops inside one process, or run more worker processes if you want horizontal scale.
 
@@ -254,8 +254,8 @@ The repository does not ship systemd units, but systemd is an appropriate produc
 
 Recommended shape:
 
-- one `osint-api.service` running `./.venv/bin/python -m app.main` for SQLite mode, or `./.venv/bin/uvicorn app.main:app ...` for PostgreSQL mode
-- one `osint-worker.service` running `./.venv/bin/python -m app.worker_main` for PostgreSQL mode only
+- one `osint-api.service` running `./.venv/bin/python -m osint_app.main` for SQLite mode, or `./.venv/bin/uvicorn osint_app.main:app ...` for PostgreSQL mode
+- one `osint-worker.service` running `./.venv/bin/python -m osint_app.worker_main` for PostgreSQL mode only
 - one `osint-searxng.service` if you do not use the helper scripts interactively
 
 Keep the API and worker in separate units when using PostgreSQL so restarts and log handling stay isolated.
@@ -345,9 +345,9 @@ The metrics endpoint is Prometheus text exposition, per-process.
 
 | Component | Where to look |
 |---|---|
-| API started by `python -m app.main` | Process stdout/stderr or systemd journal |
+| API started by `python -m osint_app.main` | Process stdout/stderr or systemd journal |
 | API started by Docker compose | `docker compose logs -f api` |
-| Worker started by `python -m app.worker_main` | Process stdout/stderr or systemd journal |
+| Worker started by `python -m osint_app.worker_main` | Process stdout/stderr or systemd journal |
 | Worker started by Docker compose | `docker compose logs -f worker` |
 | PostgreSQL container | `docker compose logs -f postgres` |
 | Local SearxNG helper | `searxng.log` |

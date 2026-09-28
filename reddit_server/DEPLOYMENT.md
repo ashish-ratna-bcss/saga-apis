@@ -256,7 +256,7 @@ User=reddit-service
 Group=reddit-service
 WorkingDirectory=/opt/reddit-service
 EnvironmentFile=/opt/reddit-service/.env
-ExecStart=/opt/reddit-service/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+ExecStart=/opt/reddit-service/.venv/bin/uvicorn reddit_app.main:app --host 0.0.0.0 --port 8000
 Restart=on-failure
 RestartSec=5
 # Give in-flight requests time to finish on SIGTERM (uvicorn's default graceful

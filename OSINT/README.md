@@ -59,7 +59,7 @@ FastAPI (app/main.py)
   +-- models.py / db.py          SQLAlchemy models; SQLite (dev) or PostgreSQL (prod)
   +-- job_queue.py               Postgres-backed multi-process job queue (FOR UPDATE SKIP
   |                              LOCKED) + lease/heartbeat crash recovery -- Postgres only
-  +-- worker_main.py             standalone worker entrypoint (`python -m app.worker_main`),
+  +-- worker_main.py             standalone worker entrypoint (`python -m osint_app.worker_main`),
   |                              no HTTP server -- the docker-compose "worker" service
   +-- metrics.py                 in-process Prometheus counters, exposed at GET /metrics
   +-- logging_config.py          structured JSON logging
@@ -76,7 +76,7 @@ FastAPI (app/main.py)
   beyond `pip install -r requirements.txt`.
 - **PostgreSQL**: the API process no longer runs adapters itself -- it only
   writes `investigations` rows with `status=queued`; any number of
-  `app.worker_main` processes claim them via `SELECT ... FOR UPDATE SKIP
+  `osint_app.worker_main` processes claim them via `SELECT ... FOR UPDATE SKIP
   LOCKED` (no separate broker -- Postgres is already the required source of
   truth, so adding Redis/Celery/RQ for this workload isn't justified). A
   worker renews its lease (`OSINT_INVESTIGATION_LEASE_SECONDS`, default 120s)
@@ -223,13 +223,13 @@ terminals:
 
 # terminal 2
 source .venv/bin/activate
-python -m app.main                  # or: uvicorn app.main:app --reload
+python -m osint_app.main                  # or: uvicorn osint_app.main:app --reload
 ```
 
 **No separate worker terminal needed here.** SQLite mode runs the worker
 in-process inside the API (`app/main.py`'s lifespan starts it automatically
 -- see "SQLite (dev) vs PostgreSQL (production)" above). `python -m
-app.worker_main` is the Postgres-mode worker entrypoint; it refuses to start
+osint_app.worker_main` is the Postgres-mode worker entrypoint; it refuses to start
 against a SQLite database (SQLite has no `SELECT ... FOR UPDATE SKIP
 LOCKED`, which that queue depends on) -- running it here would be a second,
 non-functional consumer, not added scale.
@@ -284,7 +284,7 @@ why Postgres alone is enough):
 - **migrate** -- runs `alembic upgrade head` once, then exits; `api`/`worker`
   wait for it (`depends_on: condition: service_completed_successfully`).
 - **api** -- FastAPI, no in-process workers in this mode.
-- **worker** -- `app.worker_main`, no HTTP server; scale horizontally by
+- **worker** -- `osint_app.worker_main`, no HTTP server; scale horizontally by
   running more of these (containers or bare processes), or increase
   `OSINT_WORKER_CONCURRENCY` to run more polling loops inside one process.
 
@@ -296,8 +296,8 @@ Running the migration manually (e.g. against a managed Postgres, no compose):
 ```bash
 export OSINT_DATABASE_URL=postgresql+psycopg://user:pass@host:5432/osint
 ./.venv/bin/python -m alembic upgrade head
-./.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000   # api
-./.venv/bin/python -m app.worker_main                          # worker, run N of these
+./.venv/bin/uvicorn osint_app.main:app --host 0.0.0.0 --port 8000   # api
+./.venv/bin/python -m osint_app.worker_main                          # worker, run N of these
 ```
 
 `GET /metrics` (Prometheus text format) and `GET /ready` (checks DB
