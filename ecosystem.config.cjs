@@ -2,12 +2,15 @@ const path = require("path");
 
 const root = __dirname;
 
+// Use `python -m uvicorn` (not `.venv/bin/uvicorn`) so relocated venvs still
+// work when console-script shebangs point at an old absolute path.
 function uvicornApp({ name, dir, module, port }) {
+  const venvPython = path.join(root, dir, ".venv", "bin", "python");
   return {
     name,
     cwd: path.join(root, dir),
-    script: path.join(root, dir, ".venv", "bin", "uvicorn"),
-    args: `${module} --host 0.0.0.0 --port ${port}`,
+    script: venvPython,
+    args: `-m uvicorn ${module} --host 0.0.0.0 --port ${port}`,
     interpreter: "none",
     instances: 1,
     exec_mode: "fork",

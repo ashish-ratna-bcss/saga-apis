@@ -1,10 +1,7 @@
-from fastapi import APIRouter, Depends, status
-from fastapi.responses import JSONResponse, Response
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter
+from fastapi.responses import Response
 
 from bluweb_app.core.metrics import render_metrics
-from bluweb_app.db.session import get_db
 
 router = APIRouter(tags=["health"])
 
@@ -20,15 +17,9 @@ async def liveness() -> dict:
 
 
 @router.get("/health/ready")
-async def readiness(db: AsyncSession = Depends(get_db)) -> JSONResponse:
-    try:
-        await db.execute(text("SELECT 1"))
-    except Exception as exc:  # noqa: BLE001
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "not_ready", "database": f"error: {exc}"},
-        )
-    return JSONResponse(content={"status": "ready", "database": "ok"})
+async def readiness() -> dict:
+    # Stateless API service — ready if the process is up. No owned database.
+    return {"status": "ready"}
 
 
 @router.get("/metrics")

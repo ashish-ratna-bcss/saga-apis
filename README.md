@@ -21,6 +21,10 @@ Each service has its own package, `.env`, virtualenv, and PM2 process.
 
 Telegram also exposes `/ready`. Bluweb also exposes `/health/ready`.
 
+**Bluweb** is a **self-hosted scrape/crawl API** (`/api/v1/scrape`, `/api/v1/crawl`,
+`/api/v1/preflight`). httpx + Playwright only — no paid scrape APIs. Callers
+store responses in their own DB.
+
 ## One-time setup
 
 Python 3.12+, and a `.venv` inside each service directory. Copy each

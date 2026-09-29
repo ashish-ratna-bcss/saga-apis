@@ -1,25 +1,33 @@
+"""Legacy DB session module.
+
+Bluweb is a stateless API service and does not own a database. This module
+remains only so older crawl/document code under bluweb_app/db can still be
+imported by tests without crashing at import time. The live FastAPI app
+never uses it.
+"""
+
 from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from bluweb_app.core.config import get_settings
 
-_settings = get_settings()
+class DatabaseNotConfiguredError(RuntimeError):
+    pass
 
-# Explicit pool_size/max_overflow (Universal Adaptive Web Intelligence item
-# 2): the unconfigured SQLAlchemy default (5 + 10 overflow) was an implicit
-# ceiling nobody chose. Paired with crawl_engine.py no longer holding a
-# session open across fetch/Playwright I/O, this stops concurrent crawl
-# jobs from exhausting the pool.
-engine = create_async_engine(
-    _settings.database_url,
-    pool_pre_ping=True,
-    pool_size=_settings.db_pool_size,
-    max_overflow=_settings.db_max_overflow,
-)
-AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+def _disabled_engine():
+    raise DatabaseNotConfiguredError(
+        "Bluweb no longer owns a database. Use the scrape/preflight APIs; "
+        "the caller stores results."
+    )
+
+
+# Placeholder attributes so `from bluweb_app.db.session import engine` still
+# resolves; any real use raises.
+engine = None  # type: ignore[assignment]
+AsyncSessionLocal = None  # type: ignore[assignment]
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
-    async with AsyncSessionLocal() as session:
-        yield session
+    _disabled_engine()
+    yield  # pragma: no cover

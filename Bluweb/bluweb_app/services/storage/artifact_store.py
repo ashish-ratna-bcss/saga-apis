@@ -90,10 +90,10 @@ class ArtifactStore:
 
 class NoopArtifactStore:
     """Same interface as ArtifactStore, no MinIO/network calls. Used when
-    ``settings.archival_enabled`` is False (see BLUWEB_ARCHIVAL_ENABLED) --
-    raw-bytes archival is write-only and unread by any API endpoint (Milestone 4
-    audit: `get_bytes` has no callers; document/version/diff/changes all read
-    `content` from Postgres), so disabling it changes no response behavior.
+    ``settings.archival_enabled`` is False (see ARCHIVAL_ENABLED) --
+    raw-bytes archival is write-only and unread by any API endpoint
+    (document/version/diff/changes all read `content` from Postgres), so
+    disabling it changes no response behavior.
     Still computes sha256/size/content_type locally so the existing
     Document.raw_* metadata columns keep being populated identically;
     `storage_key` is None since no object actually exists anywhere.
@@ -106,7 +106,7 @@ class NoopArtifactStore:
         return StoredArtifact(storage_key=None, size=len(data), sha256=hashlib.sha256(data).hexdigest(), content_type=content_type)
 
     async def get_bytes(self, storage_key: str) -> bytes:
-        raise ArtifactStoreError("archival is disabled (BLUWEB_ARCHIVAL_ENABLED=false); no artifact was ever stored")
+        raise ArtifactStoreError("archival is disabled (ARCHIVAL_ENABLED=false); no artifact was ever stored")
 
 
 def build_artifact_store(settings: Settings) -> ArtifactStore | NoopArtifactStore:

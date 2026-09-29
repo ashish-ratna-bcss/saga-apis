@@ -16,8 +16,6 @@ from dataclasses import dataclass, field
 import feedparser
 
 from bluweb_app.core.config import Settings
-from bluweb_app.db.repositories.crawl_repository import CrawlRepository
-from bluweb_app.db.session import AsyncSessionLocal
 from bluweb_app.services.discovery.sitemap_discovery import discover_sitemap_urls
 from bluweb_app.services.events import Event, default_bus
 from bluweb_app.services.normalization.url_normalizer import extract_domain
@@ -84,22 +82,12 @@ async def discover_extra_seeds(base_url: str, settings: Settings, security: URLS
 
 
 async def persist_discovery_outcome(base_url: str, outcome: DiscoveryOutcome) -> None:
-    """Writes the discovery statuses onto the domain's capability row.
-    Separate DB session from the crawl itself -- discovery happens once per
-    crawl dispatch, before `run_crawl`'s own session/lock lifecycle starts,
-    same reasoning as why this is best-effort (a write failure here must
-    never block dispatching the actual crawl)."""
-    try:
-        async with AsyncSessionLocal() as session:
-            await CrawlRepository(session).record_discovery_outcome(
-                domain=extract_domain(base_url),
-                sitemap_status=outcome.sitemap_status.value,
-                feed_status=outcome.feed_status.value,
-                sitemap_url_count=outcome.sitemap_url_count,
-                feed_url_count=outcome.feed_url_count,
-            )
-    except Exception:  # noqa: BLE001
-        logger.warning("failed to persist discovery outcome for %s", base_url, exc_info=True)
+    """No-op: Bluweb no longer owns a database for capability learning.
+
+    Kept so legacy callers (scheduler) do not crash; discovery still runs
+    in-process via ``discover_extra_seeds``.
+    """
+    return None
 
 
 async def _feed_entry_links(feed_url: str, settings: Settings, security: URLSecurityService) -> list[str]:

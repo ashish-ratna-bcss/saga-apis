@@ -1,44 +1,30 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 
-from bluweb_app.api.v1 import crawls, documents, domains, health, intelligence, preflight, search, sources
-from bluweb_app.core.config import apply_hf_token_to_environ, get_settings
+from bluweb_app.api.v1 import crawl, health, preflight, scrape
+from bluweb_app.core.config import apply_hf_token_to_environ
 from bluweb_app.core.errors import APIError, api_error_handler, unhandled_exception_handler
 from bluweb_app.core.logging import configure_logging, request_id_var
 from bluweb_app.core.metrics import register_metric_subscribers
 from bluweb_app.services.events import default_bus
-from bluweb_app.services.scheduling.scheduler import scheduler_loop
 from bluweb_app.services.security.url_security import URLSecurityError
 
 configure_logging()
-# Make HF_TOKEN from .env visible to huggingface_hub before any model load.
 apply_hf_token_to_environ()
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    apply_hf_token_to_environ()
-    register_metric_subscribers(default_bus)
-    task = asyncio.create_task(scheduler_loop(get_settings()))
-    yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
+register_metric_subscribers(default_bus)
 
 app = FastAPI(
-    title="Web Intelligence Collection Backend",
-    version="0.1.0",
-    description="Pre-flight assessment, instant crawl, and continuous monitoring for public web sources.",
-    lifespan=lifespan,
+    title="Web Intelligence Collection API",
+    version="0.3.0",
+    description=(
+        "Self-hosted scrape/crawl API (httpx + Playwright). Returns extracted "
+        "content in responses; the caller owns storage. No paid scrape APIs."
+    ),
 )
 
 
@@ -73,9 +59,5 @@ async def url_security_error_handler(request: Request, exc: URLSecurityError):
 
 app.include_router(health.router)
 app.include_router(preflight.router, prefix="/api/v1")
-app.include_router(crawls.router, prefix="/api/v1")
-app.include_router(documents.router, prefix="/api/v1")
-app.include_router(sources.router, prefix="/api/v1")
-app.include_router(search.router, prefix="/api/v1")
-app.include_router(domains.router, prefix="/api/v1")
-app.include_router(intelligence.router, prefix="/api/v1")
+app.include_router(scrape.router, prefix="/api/v1")
+app.include_router(crawl.router, prefix="/api/v1")
