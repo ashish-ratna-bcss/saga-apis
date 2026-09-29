@@ -1,4 +1,4 @@
-# Telegram OSINT Collection Service
+# Telegram Collection Service
 
 A Telegram data-collection and access-management backend: authenticates one
 Telegram account via MTProto (Telethon), registers sources to monitor,
@@ -6,12 +6,10 @@ determines their **real** access status, runs a legitimate join-request
 workflow for private sources, and collects messages incrementally into
 SQLite once — and only once — access has been verified.
 
-This service is the **data collection and access management layer** of a
-larger OSINT platform. It is not the whole platform: NLP, OCR, entity
-extraction, correlation, knowledge graphs, risk scoring, and case/evidence
-management are explicitly out of scope here and are expected to consume this
-service's normalized SQLite tables through their own interfaces later (see
-"Future OSINT pipeline" below).
+This service is a **standalone Telegram collection API**. Downstream apps
+may consume its normalized SQLite tables or HTTP endpoints for NLP, OCR,
+entity extraction, correlation, or case management — those concerns are
+out of scope here.
 
 ## 0. Non-negotiable scope statement
 

@@ -98,11 +98,11 @@ h2+p,h3+p{page-break-before:avoid}
   <div class="eyebrow">Technical Documentation</div>
   <div class="rule"></div>
   <h1>Telegram API<br>Technical Documentation</h1>
-  <h2>Telegram OSINT Collection Service &mdash; architecture, endpoint reference,
+  <h2>Telegram Collection Service &mdash; architecture, endpoint reference,
       Telegram integration, security and operational analysis</h2>
   <div class="spacer"></div>
   <div class="meta">
-    <div><div class="k">Service</div>Telegram OSINT Collection Service (<code>telegram_service</code>)</div>
+    <div><div class="k">Service</div>Telegram Collection Service (<code>telegram_service</code>)</div>
     <div><div class="k">Codebase version</div>0.1.0</div>
     <div><div class="k">Document version</div>1.0</div>
     <div><div class="k">Date</div>6 September 2026</div>
@@ -241,12 +241,12 @@ h2+p,h3+p{page-break-before:avoid}
 </section>
 
 <h1>1. Executive Summary</h1>
-<p><strong>Service name:</strong> Telegram OSINT Collection Service (<code>telegram_service</code>)
-<strong>Codebase version:</strong> <code>0.1.0</code> (FastAPI <code>app.title = "Telegram OSINT Collection Service"</code>)
+<p><strong>Service name:</strong> Telegram Collection Service (<code>telegram_service</code>)
+<strong>Codebase version:</strong> <code>0.1.0</code> (FastAPI <code>app.title = "Telegram Collection Service"</code>)
 <strong>Analysis basis:</strong> static read of the complete source tree, the SQLite database produced by the running service, and the test suite. Where a document and the code disagreed, the <strong>code was taken as the source of truth</strong> and the discrepancy is recorded in section 18.</p>
 <h3>What this service is</h3>
 <p>A <strong>backend HTTP service that turns one authenticated Telegram user account into a controlled, auditable data-collection API.</strong> It authenticates a single Telegram account over MTProto (Telethon), registers Telegram channels/groups/bots as "sources", determines each source's <em>real</em> access status by asking Telegram rather than assuming it, runs a legitimate join-request workflow for private sources, searches Telegram live, and collects messages incrementally into a local SQLite database once — and only once — access has been positively verified.</p>
-<p>It is explicitly the <strong>data-collection and access-management layer</strong> of a larger OSINT platform. NLP, OCR, entity extraction, correlation, risk scoring and case management are <strong>Not Implemented</strong> here and are expected to consume this service's normalized tables downstream.</p>
+<p>It is explicitly the <strong>data-collection and access-management layer</strong> of a standalone Telegram collection service. NLP, OCR, entity extraction, correlation, risk scoring and case management are <strong>Not Implemented</strong> here and are expected to consume this service's normalized tables downstream.</p>
 <h3>Business / technical objective</h3>
 <table>
 <thead>

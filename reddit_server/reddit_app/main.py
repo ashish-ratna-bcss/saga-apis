@@ -45,17 +45,15 @@ from reddit_app.reddit.client import RedditClientManager
 logger = get_logger(__name__)
 
 DESCRIPTION = """
-Standalone Reddit RSS provider service for SOC Eye.
+Standalone Reddit RSS provider service.
 
-**`/api/reddit/rss/*`** -- keyword/event/profile monitoring through Reddit's
-**public, unauthenticated RSS/Atom feeds**. Requires no Reddit credentials at
-all, is a public search interface (not the official OAuth API), and is subject
-to Reddit's own RSS availability/rate limits.
+**`/api/reddit/rss/*`** — keyword/event/profile monitoring through Reddit's
+**public, unauthenticated RSS/Atom feeds** only. No Reddit OAuth, no client
+credentials. Subject to Reddit's own RSS availability and rate limits.
 
-Owns Reddit connectivity, pagination/parsing and rate-limit/retry handling;
-deliberately owns nothing else -- no storage, no deduplication across
-requests, no polling scheduler, no alerting, no UI. SOC Eye owns all of that and
-calls this service's endpoints on its own schedule.
+Owns feed fetch/parse and rate-limit/retry handling; deliberately owns nothing
+else — no storage, no cross-request deduplication, no polling scheduler, no
+alerting, no UI. Callers own that and hit these endpoints on their own schedule.
 """
 
 
@@ -118,14 +116,12 @@ def create_app(
             {
                 "name": "reddit-rss",
                 "description": (
-                    "Keyword/event/profile monitoring via Reddit's public, unauthenticated "
-                    "RSS/Atom feeds. authenticated=false in every response: no Reddit OAuth "
-                    "credentials exist in this service at all. Still governed by this "
-                    "service's own X-API-Key policy, plus a per-caller request budget (see "
-                    "the RSS integration docs). A shared, short-TTL raw-feed cache means "
-                    "concurrent callers requesting the same feed share one Reddit fetch; "
-                    "filtering is still computed fresh per call, and no polling loop or "
-                    "cross-request result deduplication is done on the caller's behalf."
+                    "Keyword/event/profile monitoring via Reddit's public RSS/Atom feeds. "
+                    "authenticated=false in every response — this service has no Reddit "
+                    "credentials. Still governed by X-API-Key (when API_KEYS is set) and a "
+                    "per-caller request budget. Shared short-TTL feed cache coalesces "
+                    "identical fetches; filtering is per call. No polling loop or "
+                    "cross-request deduplication."
                 ),
             },
         ],

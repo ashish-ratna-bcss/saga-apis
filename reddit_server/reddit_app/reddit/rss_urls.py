@@ -21,7 +21,7 @@ from reddit_app.core.exceptions import (
 from reddit_app.core.exceptions import ValidationError as _ValidationError
 from reddit_app.reddit.urls import normalize_subreddit_names, normalize_username
 
-#: Valid ``sort`` values for Reddit's search.rss (mirrors the OAuth search API).
+#: Valid ``sort`` values for Reddit's public search.rss feed.
 RSS_SEARCH_SORTS = frozenset({"relevance", "hot", "top", "new", "comments"})
 #: Valid ``sort`` path segments for a bare subreddit-listing .rss feed.
 RSS_LISTING_SORTS = frozenset({"new", "hot", "top", "rising", "controversial"})

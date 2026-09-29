@@ -1,7 +1,6 @@
 """Parse a Reddit RSS/Atom feed into normalized post dicts. Pure functions, no
-network -- kept separate from ``rss_client.py`` exactly like ``normalize.py`` is
-kept separate from ``rest_client.py``, so parsing can be unit tested with fixture
-XML and no HTTP fake.
+network -- kept separate from ``rss_client.py`` so parsing can be unit tested
+with fixture XML and no HTTP fake.
 
 Reddit's public ``.rss`` endpoints emit **Atom** (``xmlns="http://www.w3.org/2005/Atom"``),
 not RSS 2.0, despite the file extension -- a long-standing, stable quirk. This
@@ -107,9 +106,8 @@ def parse_entry(entry: ET.Element) -> dict[str, Any]:
 
     guid = _text(entry.find(_tag("id")))
     if post_id is None and guid and "_" in guid[:3]:
-        # Reddit's own fullname, e.g. "t3_abc123" -- matches this service's bare-id
-        # convention (see app/reddit/normalize.py:strip_prefix) when the link itself
-        # didn't parse into a recognizable post URL.
+        # Reddit fullname, e.g. "t3_abc123" — strip the kind prefix for a bare id
+        # when the link itself didn't parse into a recognizable post URL.
         post_id = guid.split("_", 1)[1]
 
     content_el = entry.find(_tag("content"))

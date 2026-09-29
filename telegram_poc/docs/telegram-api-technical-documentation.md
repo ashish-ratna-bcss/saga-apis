@@ -1,14 +1,14 @@
 # 1. Executive Summary
 
-**Service name:** Telegram OSINT Collection Service (`telegram_service`)
-**Codebase version:** `0.1.0` (FastAPI `app.title = "Telegram OSINT Collection Service"`)
+**Service name:** Telegram Collection Service (`telegram_service`)
+**Codebase version:** `0.1.0` (FastAPI `app.title = "Telegram Collection Service"`)
 **Analysis basis:** static read of the complete source tree, the SQLite database produced by the running service, and the test suite. Where a document and the code disagreed, the **code was taken as the source of truth** and the discrepancy is recorded in section 18.
 
 ### What this service is
 
 A **backend HTTP service that turns one authenticated Telegram user account into a controlled, auditable data-collection API.** It authenticates a single Telegram account over MTProto (Telethon), registers Telegram channels/groups/bots as "sources", determines each source's *real* access status by asking Telegram rather than assuming it, runs a legitimate join-request workflow for private sources, searches Telegram live, and collects messages incrementally into a local SQLite database once — and only once — access has been positively verified.
 
-It is explicitly the **data-collection and access-management layer** of a larger OSINT platform. NLP, OCR, entity extraction, correlation, risk scoring and case management are **Not Implemented** here and are expected to consume this service's normalized tables downstream.
+It is explicitly the **data-collection and access-management layer** of a standalone Telegram collection service. NLP, OCR, entity extraction, correlation, risk scoring and case management are **Not Implemented** here and are expected to consume this service's normalized tables downstream.
 
 ### Business / technical objective
 

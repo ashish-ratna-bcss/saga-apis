@@ -60,8 +60,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Telegram OSINT Collection Service",
-    description="Access-managed Telegram data collection component of a larger OSINT platform.",
+    title="Telegram Collection Service",
+    description="Access-managed Telegram data collection service (standalone).",
     version="0.1.0",
     lifespan=lifespan,
 )

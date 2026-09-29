@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from telegram_app.database.repositories.audit_repository import AuditRepository
 
 # Canonical event type constants (section 19 of the spec) - kept as plain
-# strings, not a strict enum, so future OSINT-pipeline components can log
+# strings, not a strict enum, so future pipeline consumers can log
 # their own event types through the same table without a schema change.
 TELEGRAM_AUTHENTICATED = "TELEGRAM_AUTHENTICATED"
 SOURCE_REGISTERED = "SOURCE_REGISTERED"

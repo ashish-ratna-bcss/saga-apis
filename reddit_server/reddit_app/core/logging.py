@@ -19,8 +19,8 @@ SENSITIVE_KEYS = frozenset(
     {
         "authorization",
         "token",
-        "access_token",
-        "refresh_token",
+        "x-api-key",
+        "api_key",
         "reddit_rss_feed",
     }
 )

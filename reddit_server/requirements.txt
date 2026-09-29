@@ -7,7 +7,7 @@ pydantic>=2.7,<3.0
 pydantic-settings>=2.3,<3.0
 python-dotenv>=1.0,<2.0
 
-# Reddit: OAuth2 + REST over httpx (no scraping, no third-party SDK)
+# Reddit RSS over httpx (public feeds only; no OAuth, no third-party SDK)
 httpx>=0.27,<1.0
 
 # Tests

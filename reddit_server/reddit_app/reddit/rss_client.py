@@ -49,9 +49,8 @@ RSS_BASE_URL: Final[str] = f"https://{RSS_HOST}"
 
 
 class _Bucket:
-    """Tracks when the next request may be sent, from Reddit's own
-    ``X-Ratelimit-*`` response headers -- same shape as ``RedditRestClient``'s
-    bucket, kept independent since RSS has no token to hang it off of."""
+    """Tracks when the next request may be sent from Reddit's
+    ``X-Ratelimit-*`` response headers on RSS responses."""
 
     __slots__ = ("lock", "reset_at")
 

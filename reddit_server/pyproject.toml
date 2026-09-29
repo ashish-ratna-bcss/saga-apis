@@ -1,7 +1,7 @@
 [project]
 name = "reddit-provider-service"
 version = "1.0.0"
-description = "Standalone FastAPI service providing normalized Reddit data to SOC Eye via the official Reddit API."
+description = "Standalone FastAPI service providing normalized Reddit data via public RSS/Atom feeds only."
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]

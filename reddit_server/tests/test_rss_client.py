@@ -165,8 +165,8 @@ async def test_fetch_requires_both_user_and_feed(settings, fake_reddit_rss) -> N
 
 
 async def test_fetch_throttles_proactively_from_ratelimit_headers(settings) -> None:
-    """Mirrors RedditRestClient's proactive throttle: a response signalling
-    'no budget left' makes the *next* fetch wait, without needing a 429 first."""
+    """A response signalling 'no budget left' makes the *next* fetch wait,
+    without needing a 429 first."""
 
     call_count = 0
 
