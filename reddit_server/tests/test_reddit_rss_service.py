@@ -97,6 +97,16 @@ async def test_monitor_dedupes_within_response(
     assert result["count"] == 1
 
 
+async def test_monitor_subreddit_without_query_uses_listing(
+    rss_service: RedditRssService, fake_reddit_rss: FakeRedditRss
+) -> None:
+    result = await rss_service.monitor(subreddits=["Odisha"], sort="new", limit=5)
+    assert result["count"] >= 1
+    calls = fake_reddit_rss.calls_to("/new.rss")
+    assert calls
+    assert calls[0][0].endswith("/r/Odisha/new.rss")
+
+
 async def test_monitor_date_filter_excludes_posts_outside_range(
     rss_service: RedditRssService, fake_reddit_rss: FakeRedditRss
 ) -> None:

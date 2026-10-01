@@ -25,10 +25,12 @@ from reddit_app.reddit.feed_cache import FeedCache, cache_key
 from reddit_app.reddit.rss_client import RedditRssClient, RssAccount
 from reddit_app.reddit.rss_parser import parse_feed
 from reddit_app.reddit.rss_urls import (
+    RSS_LISTING_SORTS,
     RSS_SEARCH_SORTS,
     RSS_TIMES,
     RSS_USER_KINDS,
     RSS_USER_SORTS,
+    build_listing_url,
     build_search_url,
     build_user_url,
     normalize_rss_subreddits,
@@ -250,8 +252,11 @@ class RedditRssService:
         cleaned_keywords = _clean_terms(keywords, label="keywords")
         cleaned_strong = _clean_terms(strong_keywords, label="strong_keywords")
         cleaned_exclude = _clean_terms(exclude, label="exclude")
-        built_query = _build_query(query, cleaned_keywords)
         sub_path, sub_list = normalize_rss_subreddits(subreddits)
+        explicit_query = bool(query and query.strip())
+        built_query = ""
+        if explicit_query or cleaned_keywords:
+            built_query = _build_query(query, cleaned_keywords)
         start = _parse_date_bound(from_date, end_of_day=False)
         end = _parse_date_bound(to_date, end_of_day=True)
         if start and end and start > end:
@@ -279,8 +284,12 @@ class RedditRssService:
                 details={"time_range": time_range, "allowed": sorted(RSS_TIMES)},
             )
 
-        explicit_query = bool(query and query.strip())
-        if (
+        if not explicit_query and not cleaned_keywords:
+            if not sub_path:
+                raise RedditRssInvalidQueryError("query or keywords is required")
+            listing_sort = sort_key if sort_key in RSS_LISTING_SORTS else "new"
+            posts = await self._fetch_listing(sub_path, sort=listing_sort, limit=limit)
+        elif (
             not explicit_query
             and len(cleaned_keywords) > 1
             and len(self._client.accounts) > 1
@@ -341,6 +350,20 @@ class RedditRssService:
         raw_xml = await self._feed_cache.get_or_fetch(
             cache_key(path, params),
             lambda: self._client.fetch(path, params, account=account),
+        )
+        return parse_feed(raw_xml)
+
+    async def _fetch_listing(
+        self,
+        subreddits: str,
+        *,
+        sort: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        path, params = build_listing_url(subreddits=subreddits, sort=sort, limit=limit)
+        raw_xml = await self._feed_cache.get_or_fetch(
+            cache_key(path, params),
+            lambda: self._client.fetch(path, params),
         )
         return parse_feed(raw_xml)
 

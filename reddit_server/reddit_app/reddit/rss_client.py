@@ -74,7 +74,7 @@ class RedditRssClient:
         self._settings = settings
         self._transport = transport
         self._client: httpx.AsyncClient | None = None
-        pairs = settings.rss_account_pairs
+        pairs = getattr(settings, "rss_account_pairs", None) or []
         self._accounts = (
             [RssAccount(user=user, feed=feed) for user, feed in pairs]
             if pairs
