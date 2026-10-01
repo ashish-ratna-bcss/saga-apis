@@ -38,7 +38,8 @@ from reddit_app.api.routes_reddit_rss import router as reddit_rss_router
 from reddit_app.core.config import Settings, get_settings
 from reddit_app.core.exceptions import RedditServiceError
 from reddit_app.core.logging import configure_logging, get_logger, register_secret
-from reddit_app.core.rate_limit import ClientRateLimiter, rate_limit_rss_client
+from reddit_app.core.rate_limit import ClientRateLimiter
+from reddit_app.reddit.tenant_queue import tenant_key_var
 from reddit_app.core.security import register_api_key_secrets, require_api_key
 from reddit_app.reddit.client import RedditClientManager
 
@@ -88,6 +89,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Shutting down Reddit RSS provider service")
         await clients.close()
         logger.info("Shutdown complete")
+
+
+async def bind_reddit_tenant(request: Request) -> AsyncIterator[None]:
+    """Tag this request with the calling tenant, the same key sentiment uses.
+
+    ``x-tenant-key`` is the tenant database name. ``x-client-id`` is the
+    BluGate client code and is the fallback when the app did not send a key.
+    """
+
+    raw = (
+        request.headers.get("x-tenant-key")
+        or request.headers.get("x-client-id")
+        or "unknown"
+    )
+    token = tenant_key_var.set(raw.strip() or "unknown")
+    try:
+        yield
+    finally:
+        tenant_key_var.reset(token)
 
 
 def create_app(
@@ -150,7 +170,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(
         reddit_rss_router,
-        dependencies=[Depends(require_api_key), Depends(rate_limit_rss_client)],
+        dependencies=[Depends(require_api_key), Depends(bind_reddit_tenant)],
     )
     _register_exception_handlers(app)
     return app

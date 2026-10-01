@@ -105,7 +105,13 @@ class Settings(BaseSettings):
         ),
     )
     reddit_rss_global_burst: int = Field(
-        default=1, ge=1, description="Token bucket capacity for reddit_rss_global_rate."
+        default=25,
+        ge=1,
+        description=(
+            "Token bucket capacity. Callers search one keyword per request, the same "
+            "way X does, so one event scan needs a burst of up to the 25-keyword cap. "
+            "Refill stays at reddit_rss_global_rate."
+        ),
     )
     reddit_rss_max_queue_wait_seconds: float = Field(
         default=55.0,
@@ -120,10 +126,21 @@ class Settings(BaseSettings):
     reddit_rss_cache_max_entries: int = Field(
         default=256, ge=1, description="Bounds the feed cache's memory use."
     )
-    reddit_rss_client_limit: int = Field(
-        default=10,
+    reddit_rss_gate_size: int = Field(
+        default=64,
         ge=1,
-        description="Max /api/reddit/rss/* requests per caller within the window below.",
+        description=(
+            "How many Reddit fetches may run at once. Extra callers wait in the "
+            "per-tenant round-robin queue until a slot frees. They are not rejected."
+        ),
+    )
+    reddit_rss_client_limit: int = Field(
+        default=25,
+        ge=1,
+        description=(
+            "Max /api/reddit/rss/* requests per caller within the window below. "
+            "Matches one event scan of up to 25 per-keyword searches."
+        ),
     )
     reddit_rss_client_window_seconds: float = Field(default=60.0, gt=0)
     reddit_rss_client_limit_max_tracked_clients: int = Field(

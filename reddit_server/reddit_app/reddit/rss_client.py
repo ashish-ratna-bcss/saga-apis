@@ -13,11 +13,9 @@ client works without them, just harder-throttled.
 Only 429/5xx/timeouts/connection errors are retried, bounded, with backoff and
 jitter.
 
-Every attempt (including retries) first passes through ``self._global_bucket``
-(see ``rate_limiter.py``) -- a proactive, process-wide pacing gate that exists
-because this service is a shared gateway: many callers can hit this process at
-once, and only Reddit's response headers driving ``self._bucket`` above would
-otherwise do nothing to stop the first concurrent burst.
+Callers are admitted through ``self._tenant_gate`` (see ``tenant_queue.py``).
+That queue does not reject and does not expire: each tenant waits its
+round-robin turn, then this method waits for Reddit's response.
 """
 
 from __future__ import annotations
@@ -34,13 +32,12 @@ from reddit_app.core.config import Settings
 from reddit_app.core.exceptions import (
     RedditRssError,
     RedditRssForbiddenError,
-    RedditRssQueueTimeoutError,
     RedditRssRateLimitedError,
     RedditRssTimeoutError,
     RedditRssUnavailableError,
 )
 from reddit_app.core.logging import get_logger, register_secret
-from reddit_app.reddit.rate_limiter import TokenBucket
+from reddit_app.reddit.tenant_queue import UNKNOWN_TENANT, TenantRoundRobin, tenant_key_var
 
 logger = get_logger(__name__)
 
@@ -70,9 +67,7 @@ class RedditRssClient:
         self._transport = transport
         self._client: httpx.AsyncClient | None = None
         self._bucket = _Bucket()
-        self._global_bucket = TokenBucket(
-            capacity=settings.reddit_rss_global_burst, refill_rate=settings.reddit_rss_global_rate
-        )
+        self._tenant_gate = TenantRoundRobin(size=settings.reddit_rss_gate_size)
         register_secret(settings.reddit_rss_feed_value)
 
     async def start(self) -> None:
@@ -118,18 +113,25 @@ class RedditRssClient:
 
         attempts = self._settings.reddit_rss_max_retries + 1
         last_error: RedditRssError | None = None
+        tenant_key = tenant_key_var.get() or UNKNOWN_TENANT
+        await self._tenant_gate.acquire(tenant_key)
+        try:
+            return await self._fetch_acquired(
+                path, request_params, attempts=attempts, last_error=last_error
+            )
+        finally:
+            await self._tenant_gate.release()
 
+    async def _fetch_acquired(
+        self,
+        path: str,
+        request_params: dict[str, str],
+        *,
+        attempts: int,
+        last_error: RedditRssError | None,
+    ) -> bytes:
+        assert self._client is not None
         for attempt in range(1, attempts + 1):
-            try:
-                await self._global_bucket.acquire(
-                    max_wait_seconds=self._settings.reddit_rss_max_queue_wait_seconds
-                )
-            except TimeoutError as exc:
-                logger.warning(
-                    "Gave up waiting for the shared Reddit RSS budget",
-                    extra={"path": path, "attempt": attempt},
-                )
-                raise RedditRssQueueTimeoutError(str(exc)) from exc
             async with self._bucket.lock:
                 await self._wait_for_slot()
             try:
