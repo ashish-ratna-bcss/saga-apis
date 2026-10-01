@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+
+import httpx
 import pytest
 
 from reddit_app.core.exceptions import (
@@ -347,12 +350,20 @@ async def test_user_date_filter_excludes_posts_outside_range(
     assert result["posts"][0]["id"] == "inrange"
 
 
-async def test_user_shares_cached_feed_across_calls_with_identical_params(
+async def test_user_fetches_the_latest_feed_on_every_hit(
     rss_service: RedditRssService, fake_reddit_rss: FakeRedditRss
 ) -> None:
-    await rss_service.user(username="spez")
-    await rss_service.user(username="spez")
-    assert len(fake_reddit_rss.calls_to("/user/spez/.rss")) == 1
+    first = atom_feed([atom_entry(post_id="older", published="2026-09-01T00:00:00+00:00")])
+    second = atom_feed([atom_entry(post_id="newer", published="2026-09-02T00:00:00+00:00")])
+    fake_reddit_rss.scripted["/user/spez/.rss"] = [
+        httpx.Response(200, content=first),
+        httpx.Response(200, content=second),
+    ]
+    first_result = await rss_service.user(username="spez")
+    second_result = await rss_service.user(username="spez")
+    assert first_result["posts"][0]["id"] == "older"
+    assert second_result["posts"][0]["id"] == "newer"
+    assert len(fake_reddit_rss.calls_to("/user/spez/.rss")) == 2
 
 
 async def test_user_different_kinds_each_get_their_own_fetch(
@@ -362,3 +373,85 @@ async def test_user_different_kinds_each_get_their_own_fetch(
     await rss_service.user(username="spez", kind="submitted")
     assert len(fake_reddit_rss.calls_to("/user/spez/.rss")) == 1
     assert len(fake_reddit_rss.calls_to("/user/spez/submitted.rss")) == 1
+
+
+async def test_monitor_splits_keywords_across_rss_accounts_and_merges() -> None:
+    """Several keywords and several RSS accounts: one response, same query string."""
+
+    import httpx
+
+    from reddit_app.core.config import Settings
+    from reddit_app.reddit.feed_cache import FeedCache
+    from reddit_app.reddit.rss_client import RedditRssClient
+
+    calls: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        query = request.url.params["q"]
+        user = request.url.params["user"]
+        calls.append((query, user))
+        post_id = "post-protest" if "protest" in query else "post-strike"
+        return httpx.Response(200, content=atom_feed([atom_entry(post_id=post_id, title=query)]))
+
+    configured = Settings(
+        _env_file=None,
+        environment="test",
+        reddit_rss_accounts="alice:feedtokenalice,bob:feedtokenbob",
+        reddit_rss_max_retries=0,
+        log_level="WARNING",
+    )
+    client = RedditRssClient(configured, transport=httpx.MockTransport(handler))
+    service = RedditRssService(
+        client,
+        FeedCache(ttl_seconds=60, max_entries=16),
+        event_threshold=configured.reddit_rss_event_threshold,
+    )
+    await client.start()
+    try:
+        result = await service.monitor(keywords=["protest", "strike"])
+    finally:
+        await client.close()
+
+    assert result["query"] == "protest OR strike"
+    assert result["count"] == 2
+    assert {post["id"] for post in result["posts"]} == {"post-protest", "post-strike"}
+    assert {user for _, user in calls} == {"alice", "bob"}
+
+
+async def test_concurrent_profile_hits_use_different_rss_accounts() -> None:
+    from reddit_app.core.config import Settings
+    from reddit_app.reddit.feed_cache import FeedCache
+    from reddit_app.reddit.rss_client import RedditRssClient
+
+    users: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        users.append(request.url.params["user"])
+        return httpx.Response(
+            200, content=atom_feed([atom_entry(post_id=request.url.params["user"])])
+        )
+
+    configured = Settings(
+        _env_file=None,
+        environment="test",
+        reddit_rss_accounts="alice:feedtokenalice,bob:feedtokenbob",
+        reddit_rss_max_retries=0,
+        log_level="WARNING",
+    )
+    client = RedditRssClient(configured, transport=httpx.MockTransport(handler))
+    service = RedditRssService(
+        client,
+        FeedCache(ttl_seconds=60, max_entries=16),
+        event_threshold=configured.reddit_rss_event_threshold,
+    )
+    await client.start()
+    try:
+        first, second = await asyncio.gather(
+            service.user(username="one"),
+            service.user(username="two"),
+        )
+    finally:
+        await client.close()
+
+    assert {post["id"] for post in first["posts"] + second["posts"]} <= {"alice", "bob"}
+    assert set(users) == {"alice", "bob"}

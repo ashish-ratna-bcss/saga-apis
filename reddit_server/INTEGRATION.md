@@ -61,8 +61,12 @@ share one fetch. Filtering (`keywords`, `exclude`, …) always runs fresh per
 request after the shared cache. The cache is process-local.
 
 Optional `REDDIT_RSS_USER` + `REDDIT_RSS_FEED` from reddit.com → Preferences →
-RSS Feeds are appended on every request. These are not OAuth; the feed token is
-still treated as a secret (never logged or returned).
+RSS Feeds are appended on every request. `REDDIT_RSS_ACCOUNTS` adds more
+`user:feed` pairs. When a request includes several keywords and more than one
+account is configured, those keywords are split across the accounts, every
+search is waited on, and the posts are merged into the same response body.
+These are not OAuth; each feed token is still treated as a secret (never logged
+or returned).
 
 ---
 

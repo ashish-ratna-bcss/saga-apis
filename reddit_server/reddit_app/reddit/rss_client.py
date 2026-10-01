@@ -22,6 +22,7 @@ import asyncio
 import contextlib
 import random
 import time
+from dataclasses import dataclass, field
 from typing import Final
 
 import httpx
@@ -54,6 +55,15 @@ class _Bucket:
         self.reset_at: float = 0.0
 
 
+@dataclass
+class RssAccount:
+    """One Reddit RSS identity. Each account has its own rate-limit bucket."""
+
+    user: str
+    feed: str
+    bucket: _Bucket = field(default_factory=_Bucket)
+
+
 class RedditRssClient:
     """Fetches raw feed bytes from Reddit's public RSS host. Parsing lives in
     ``rss_parser.py``; this class only owns the HTTP concern."""
@@ -64,9 +74,29 @@ class RedditRssClient:
         self._settings = settings
         self._transport = transport
         self._client: httpx.AsyncClient | None = None
-        self._bucket = _Bucket()
+        pairs = settings.rss_account_pairs
+        self._accounts = (
+            [RssAccount(user=user, feed=feed) for user, feed in pairs]
+            if pairs
+            else [RssAccount(user="", feed="")]
+        )
+        self._next_account = 0
+        self._pick_lock = asyncio.Lock()
         self._tenant_gate = TenantRoundRobin(size=settings.reddit_rss_gate_size)
-        register_secret(settings.reddit_rss_feed_value)
+        for account in self._accounts:
+            register_secret(account.feed)
+
+    @property
+    def accounts(self) -> list[RssAccount]:
+        return self._accounts
+
+    async def checkout(self) -> RssAccount:
+        """Round-robin the next RSS account. One anonymous account when none are configured."""
+
+        async with self._pick_lock:
+            account = self._accounts[self._next_account % len(self._accounts)]
+            self._next_account += 1
+            return account
 
     async def start(self) -> None:
         if self._client is not None:
@@ -96,18 +126,25 @@ class RedditRssClient:
     async def __aexit__(self, *_exc: object) -> None:
         await self.close()
 
-    async def fetch(self, path: str, params: dict[str, str]) -> bytes:
+    async def fetch(
+        self, path: str, params: dict[str, str], *, account: RssAccount | None = None
+    ) -> bytes:
         """GET ``path`` (already-validated, already-built by ``rss_urls.py``) and
-        return the raw response body, bounded and retried per the module docstring."""
+        return the raw response body, bounded and retried per the module docstring.
+
+        ``account`` pins the fetch to one RSS user. When omitted, the next user
+        in the round-robin is used.
+        """
 
         if self._client is None:
             await self.start()
         assert self._client is not None
 
+        account = account or await self.checkout()
         request_params = dict(params)
-        if self._settings.reddit_rss_user and self._settings.reddit_rss_feed_value:
-            request_params["user"] = self._settings.reddit_rss_user
-            request_params["feed"] = self._settings.reddit_rss_feed_value
+        if account.user and account.feed:
+            request_params["user"] = account.user
+            request_params["feed"] = account.feed
 
         attempts = self._settings.reddit_rss_max_retries + 1
         last_error: RedditRssError | None = None
@@ -115,7 +152,11 @@ class RedditRssClient:
         await self._tenant_gate.acquire(tenant_key)
         try:
             return await self._fetch_acquired(
-                path, request_params, attempts=attempts, last_error=last_error
+                path,
+                request_params,
+                account=account,
+                attempts=attempts,
+                last_error=last_error,
             )
         finally:
             await self._tenant_gate.release()
@@ -125,17 +166,22 @@ class RedditRssClient:
         path: str,
         request_params: dict[str, str],
         *,
+        account: RssAccount,
         attempts: int,
         last_error: RedditRssError | None,
     ) -> bytes:
         assert self._client is not None
         for attempt in range(1, attempts + 1):
-            async with self._bucket.lock:
-                await self._wait_for_slot()
+            async with account.bucket.lock:
+                await self._wait_for_slot(account.bucket)
             try:
                 async with self._client.stream("GET", path, params=request_params) as response:
                     body = await self._read_body(
-                        response, path=path, attempt=attempt, attempts=attempts
+                        response,
+                        path=path,
+                        attempt=attempt,
+                        attempts=attempts,
+                        bucket=account.bucket,
                     )
             except httpx.TimeoutException:
                 last_error = RedditRssTimeoutError("Timed out talking to Reddit RSS")
@@ -163,32 +209,38 @@ class RedditRssClient:
         assert last_error is not None
         raise last_error
 
-    async def _wait_for_slot(self) -> None:
+    async def _wait_for_slot(self, bucket: _Bucket) -> None:
         now = time.monotonic()
-        if self._bucket.reset_at > now:
-            delay = self._bucket.reset_at - now
+        if bucket.reset_at > now:
+            delay = bucket.reset_at - now
             logger.debug("Waiting for RSS rate-limit slot", extra={"delay_seconds": delay})
             await asyncio.sleep(delay)
 
-    def _update_bucket(self, response: httpx.Response) -> None:
+    def _update_bucket(self, response: httpx.Response, bucket: _Bucket) -> None:
         remaining = response.headers.get("X-Ratelimit-Remaining")
         reset = response.headers.get("X-Ratelimit-Reset")
         if remaining is None or reset is None:
             return
         try:
             if float(remaining) < 1:
-                self._bucket.reset_at = time.monotonic() + float(reset)
+                bucket.reset_at = time.monotonic() + float(reset)
         except ValueError:  # pragma: no cover - malformed header
             return
 
     async def _read_body(
-        self, response: httpx.Response, *, path: str, attempt: int, attempts: int
+        self,
+        response: httpx.Response,
+        *,
+        path: str,
+        attempt: int,
+        attempts: int,
+        bucket: _Bucket,
     ) -> bytes | None:
         """Read one response. Returns the body on success, ``None`` if this attempt
         was a retryable 429/5xx (already slept for it -- ``fetch`` should just loop
         again with no additional backoff), or raises for a non-retryable failure."""
 
-        self._update_bucket(response)
+        self._update_bucket(response, bucket)
 
         if response.status_code in (301, 302, 303, 307, 308):
             raise RedditRssUnavailableError(

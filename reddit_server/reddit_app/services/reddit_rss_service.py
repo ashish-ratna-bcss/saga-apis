@@ -14,13 +14,15 @@ per route. ``event()`` calls ``monitor()`` too, then layers a stateless
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import UTC, datetime
 from typing import Any
 
-from reddit_app.core.exceptions import RedditRssInvalidQueryError
+from reddit_app.core.exceptions import RedditRssError, RedditRssInvalidQueryError
+from reddit_app.core.logging import get_logger
 from reddit_app.reddit.feed_cache import FeedCache, cache_key
-from reddit_app.reddit.rss_client import RedditRssClient
+from reddit_app.reddit.rss_client import RedditRssClient, RssAccount
 from reddit_app.reddit.rss_parser import parse_feed
 from reddit_app.reddit.rss_urls import (
     RSS_SEARCH_SORTS,
@@ -35,6 +37,8 @@ from reddit_app.reddit.rss_urls import (
 
 MAX_KEYWORDS = 25
 MAX_KEYWORD_LEN = 100
+
+logger = get_logger(__name__)
 
 #: The pasted "event monitoring" strategy's own subreddit/keyword lists -- used as
 #: POST /api/reddit/rss/event's defaults when the caller doesn't override them.
@@ -189,6 +193,12 @@ def _annotate_and_filter(
     return posts
 
 
+def _newest_first(posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Latest published item first. Missing timestamps sort last."""
+
+    return sorted(posts, key=lambda post: post.get("published_at") or post.get("updated_at") or "", reverse=True)
+
+
 def _dedupe(posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Within-response only, by id/guid/url -- see INTEGRATION.md for why this
     service deliberately does not deduplicate across requests."""
@@ -269,16 +279,27 @@ class RedditRssService:
                 details={"time_range": time_range, "allowed": sorted(RSS_TIMES)},
             )
 
-        path, params = build_search_url(
-            query=built_query, subreddits=sub_path, sort=sort_key, time_range=time_key, limit=limit
-        )
-        # Shared across every caller requesting this exact feed -- see feed_cache.py.
-        # Filtering below runs fresh per call, against this caller's own keywords/
-        # strong_keywords/exclude/match_field/min_matches; nothing here is stored.
-        raw_xml = await self._feed_cache.get_or_fetch(
-            cache_key(path, params), lambda: self._client.fetch(path, params)
-        )
-        posts = parse_feed(raw_xml)
+        explicit_query = bool(query and query.strip())
+        if (
+            not explicit_query
+            and len(cleaned_keywords) > 1
+            and len(self._client.accounts) > 1
+        ):
+            posts = await self._fetch_split_keywords(
+                cleaned_keywords,
+                subreddits=sub_path,
+                sort=sort_key,
+                time_range=time_key,
+                limit=limit,
+            )
+        else:
+            posts = await self._fetch_search(
+                built_query,
+                subreddits=sub_path,
+                sort=sort_key,
+                time_range=time_key,
+                limit=limit,
+            )
         posts = _annotate_and_filter(
             posts,
             cleaned_keywords=cleaned_keywords,
@@ -303,6 +324,73 @@ class RedditRssService:
             "count": len(posts),
             "posts": posts,
         }
+
+    async def _fetch_search(
+        self,
+        query: str,
+        *,
+        subreddits: str | None,
+        sort: str,
+        time_range: str,
+        limit: int,
+        account: RssAccount | None = None,
+    ) -> list[dict[str, Any]]:
+        path, params = build_search_url(
+            query=query, subreddits=subreddits, sort=sort, time_range=time_range, limit=limit
+        )
+        raw_xml = await self._feed_cache.get_or_fetch(
+            cache_key(path, params),
+            lambda: self._client.fetch(path, params, account=account),
+        )
+        return parse_feed(raw_xml)
+
+    async def _fetch_split_keywords(
+        self,
+        keywords: list[str],
+        *,
+        subreddits: str | None,
+        sort: str,
+        time_range: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Give each RSS account its share of the keywords, wait for every search, merge."""
+
+        accounts = self._client.accounts
+        groups: list[list[str]] = [[] for _ in accounts]
+        for index, keyword in enumerate(keywords):
+            groups[index % len(accounts)].append(keyword)
+
+        async def run(account: RssAccount, group: list[str]) -> list[dict[str, Any]]:
+            return await self._fetch_search(
+                " OR ".join(group),
+                subreddits=subreddits,
+                sort=sort,
+                time_range=time_range,
+                limit=limit,
+                account=account,
+            )
+
+        results = await asyncio.gather(
+            *[run(account, group) for account, group in zip(accounts, groups, strict=True) if group],
+            return_exceptions=True,
+        )
+        posts: list[dict[str, Any]] = []
+        errors: list[BaseException] = []
+        for result in results:
+            if isinstance(result, BaseException):
+                errors.append(result)
+                logger.warning(
+                    "RSS keyword group failed",
+                    extra={"error_type": type(result).__name__},
+                )
+            else:
+                posts.extend(result)
+        if errors and not posts:
+            first = errors[0]
+            if isinstance(first, RedditRssError):
+                raise first
+            raise RedditRssError("Reddit RSS keyword searches failed")
+        return posts
 
     async def user(
         self,
@@ -367,10 +455,12 @@ class RedditRssService:
         path, params = build_user_url(
             username=name, kind=kind_key, sort=sort_key, time_range=time_key, limit=limit
         )
-        raw_xml = await self._feed_cache.get_or_fetch(
-            cache_key(path, params), lambda: self._client.fetch(path, params)
-        )
-        posts = parse_feed(raw_xml)
+        # Profile feeds are fetched live on every hit. The shared keyword cache would
+        # replay the same posts for up to a minute, and each hit checks out the next
+        # RSS account so concurrent BluGate profile calls do not share one quota.
+        # The tenant queue waits until Reddit replies; it does not expire the request.
+        raw_xml = await self._client.fetch(path, params)
+        posts = _newest_first(parse_feed(raw_xml))
         posts = _annotate_and_filter(
             posts,
             cleaned_keywords=cleaned_keywords,

@@ -71,6 +71,14 @@ class Settings(BaseSettings):
             "never returned by any endpoint)."
         ),
     )
+    reddit_rss_accounts: str = Field(
+        default="",
+        description=(
+            "Additional RSS accounts, comma-separated user:feed pairs from "
+            "reddit.com -> Preferences -> RSS Feeds. A keyword list on one request "
+            "is split across these accounts, fetched, then returned as one response."
+        ),
+    )
     reddit_rss_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     reddit_rss_max_retries: int = Field(
         default=2, ge=0, le=5, description="Bounded retries for transient RSS failures."
@@ -121,6 +129,28 @@ class Settings(BaseSettings):
         return normalized
 
     # --------------------------------------------------------------------- helpers --
+    @property
+    def rss_account_pairs(self) -> list[tuple[str, str]]:
+        """RSS ``(user, feed)`` pairs. The single ``reddit_rss_user`` pair is included."""
+
+        pairs: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+
+        def add(user: str, feed: str) -> None:
+            key = (user.strip(), feed.strip())
+            if key[0] and key[1] and key not in seen:
+                seen.add(key)
+                pairs.append(key)
+
+        for part in self.reddit_rss_accounts.split(","):
+            part = part.strip()
+            if ":" not in part:
+                continue
+            user, feed = part.split(":", 1)
+            add(user, feed)
+        add(self.reddit_rss_user, self.reddit_rss_feed_value)
+        return pairs
+
     @property
     def reddit_rss_feed_value(self) -> str:
         """The raw RSS feed token. Only ever appended to RSS request params."""
