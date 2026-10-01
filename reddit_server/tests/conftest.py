@@ -37,10 +37,6 @@ def settings() -> Settings:
         environment="test",
         reddit_rss_max_retries=2,
         reddit_rss_retry_base_delay_seconds=0.01,
-        # Fast/effectively-unthrottled by default so existing tests aren't paced
-        # by the shared-gateway limiter; tests of that limiter override these.
-        reddit_rss_global_rate=1000.0,
-        reddit_rss_global_burst=1000,
         reddit_rss_cache_ttl_seconds=60.0,
         log_level="WARNING",
     )

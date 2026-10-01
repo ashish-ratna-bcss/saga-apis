@@ -39,11 +39,9 @@ Treat `error.code` as the stable contract; `message` is human-readable.
 | 422 | `REDDIT_RSS_INVALID_SUBREDDIT` | Bad or too many subreddit names |
 | 403 | `REDDIT_RSS_FORBIDDEN` | Reddit blocked the request (IP/reputation) |
 | 429 | `REDDIT_RSS_RATE_LIMITED` | Reddit RSS rate limit exhausted |
-| 429 | `REDDIT_RSS_CLIENT_RATE_LIMITED` | This caller exceeded its budget on this service |
 | 502 | `REDDIT_RSS_UNAVAILABLE` | Upstream failure / oversized body |
 | 502 | `REDDIT_RSS_PARSE_ERROR` | Non-XML / unparseable feed body |
 | 504 | `REDDIT_RSS_TIMEOUT` | Timed out talking to Reddit |
-| 504 | `REDDIT_RSS_QUEUE_TIMEOUT` | Shared outbound budget wait exceeded |
 
 Empty success is still `200` with `"count": 0, "posts": []`.
 
@@ -51,17 +49,19 @@ Empty success is still `200` with `"count": 0, "posts": []`.
 
 ## 3. Shared-gateway behaviour
 
-Many callers → one process → one Reddit-facing IP (~1 req/min unauthenticated).
+Many callers → one process → Reddit's public RSS host.
 
-1. **Global token bucket** — paces every outbound Reddit fetch (`REDDIT_RSS_GLOBAL_RATE`).
-2. **Feed cache + coalescing** — identical feed URLs within TTL share one fetch.
-3. **Per-caller limiter** — `REDDIT_RSS_CLIENT_LIMIT` / window on this router.
+This service does not add its own request quota. Outbound fetches run until
+Reddit's `X-Ratelimit-*` headers say the remaining budget is below one request,
+then the next fetch waits for `X-Ratelimit-Reset`. A `429` is retried from
+`Retry-After` or that same reset header.
 
-All three are process-local. Filtering (`keywords`, `exclude`, …) always runs
-fresh per request after the shared cache.
+**Feed cache + coalescing** — identical feed URLs within `REDDIT_RSS_CACHE_TTL_SECONDS`
+share one fetch. Filtering (`keywords`, `exclude`, …) always runs fresh per
+request after the shared cache. The cache is process-local.
 
-Optional higher Reddit quota: set `REDDIT_RSS_USER` + `REDDIT_RSS_FEED` from
-reddit.com → Preferences → RSS Feeds. These are not OAuth; the feed token is
+Optional `REDDIT_RSS_USER` + `REDDIT_RSS_FEED` from reddit.com → Preferences →
+RSS Feeds are appended on every request. These are not OAuth; the feed token is
 still treated as a secret (never logged or returned).
 
 ---

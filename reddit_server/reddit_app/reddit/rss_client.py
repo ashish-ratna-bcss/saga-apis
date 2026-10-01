@@ -2,13 +2,11 @@
 any kind. This is the only class in this service allowed to make HTTP requests
 to Reddit's public RSS host (``www.reddit.com``'s ``.rss`` endpoints).
 
-Reddit cut unauthenticated RSS's rate limit hard in June 2026 (~100/10min down to
-~1/min per feed), confirmed via ``X-Ratelimit-*`` response headers, so this client
-proactively throttles from them (see ``_Bucket`` below) rather than a blind
-hardcoded sleep. Reddit's own documented workaround is appending ``user=``/
-``feed=`` (from an account's RSS preferences) to every request, which restores
-the old ceiling; ``reddit_rss_user``/``reddit_rss_feed`` are optional and this
-client works without them, just harder-throttled.
+This client does not impose its own request ceiling. It waits only when Reddit's
+``X-Ratelimit-*`` response headers say the remaining quota is below one request
+(see ``_Bucket`` below), and it retries a 429 using ``Retry-After`` or
+``X-Ratelimit-Reset``. Optional ``user=``/``feed=`` (from an account's RSS
+preferences) are appended when configured; they are not required.
 
 Only 429/5xx/timeouts/connection errors are retried, bounded, with backoff and
 jitter.

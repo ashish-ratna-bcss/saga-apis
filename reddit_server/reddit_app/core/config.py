@@ -58,11 +58,9 @@ class Settings(BaseSettings):
         default="",
         description=(
             "Optional: your Reddit username, paired with reddit_rss_feed, to append "
-            "'user='/'feed=' to every RSS request -- Reddit's own June 2026 workaround "
-            "for its unauthenticated RSS rate cut (~100/10min -> ~1/min). Get both from "
-            "reddit.com -> Preferences -> RSS Feeds. Leave both unset to still work, "
-            "just rate-limited harder (this client throttles proactively either way "
-            "from Reddit's own X-Ratelimit-* response headers, present on both)."
+            "'user='/'feed=' to every RSS request. Get both from reddit.com -> "
+            "Preferences -> RSS Feeds. This service does not add its own request cap; "
+            "it waits only when Reddit's X-Ratelimit-* headers say the quota is used up."
         ),
     )
     reddit_rss_feed: SecretStr = Field(
@@ -92,32 +90,8 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------- reddit rss shared-gateway infra --
-    #: These four groups exist because this service is a shared gateway: many callers
-    #: hitting one process, which hits one Reddit-facing IP with a hard ~1 req/min
-    #: budget. See app/reddit/rate_limiter.py and app/reddit/feed_cache.py.
-    reddit_rss_global_rate: float = Field(
-        default=1 / 60,
-        gt=0,
-        description=(
-            "Process-wide Reddit RSS outbound tokens/sec -- a proactive pacing gate, "
-            "separate from (and in addition to) the reactive X-Ratelimit-* backoff "
-            "above. Every outbound attempt, retries included, waits for a token."
-        ),
-    )
-    reddit_rss_global_burst: int = Field(
-        default=25,
-        ge=1,
-        description=(
-            "Token bucket capacity. Callers search one keyword per request, the same "
-            "way X does, so one event scan needs a burst of up to the 25-keyword cap. "
-            "Refill stays at reddit_rss_global_rate."
-        ),
-    )
-    reddit_rss_max_queue_wait_seconds: float = Field(
-        default=55.0,
-        gt=0,
-        description="Give up waiting for the shared Reddit RSS budget after this long.",
-    )
+    #: Outbound quota is Reddit's own X-Ratelimit-* headers. The cache only avoids
+    #: refetching an identical feed; it is not a second rate limit.
     reddit_rss_cache_ttl_seconds: float = Field(
         default=60.0,
         gt=0,
@@ -131,22 +105,9 @@ class Settings(BaseSettings):
         ge=1,
         description=(
             "How many Reddit fetches may run at once. Extra callers wait in the "
-            "per-tenant round-robin queue until a slot frees. They are not rejected."
+            "per-tenant round-robin queue until a slot frees. They are not rejected "
+            "and this is not a request quota."
         ),
-    )
-    reddit_rss_client_limit: int = Field(
-        default=25,
-        ge=1,
-        description=(
-            "Max /api/reddit/rss/* requests per caller within the window below. "
-            "Matches one event scan of up to 25 per-keyword searches."
-        ),
-    )
-    reddit_rss_client_window_seconds: float = Field(default=60.0, gt=0)
-    reddit_rss_client_limit_max_tracked_clients: int = Field(
-        default=10_000,
-        ge=1,
-        description="Bounds the per-client limiter's memory use across distinct callers.",
     )
 
     # ------------------------------------------------------------------ validators --

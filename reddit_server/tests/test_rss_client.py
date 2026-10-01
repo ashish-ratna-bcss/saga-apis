@@ -189,61 +189,6 @@ async def test_fetch_throttles_proactively_from_ratelimit_headers(settings) -> N
     assert elapsed >= 0.08
 
 
-async def test_global_bucket_paces_every_attempt_including_retries(settings) -> None:
-    """Section 7: a retry is also an outbound Reddit request -- one acquired
-    global-bucket token must not cover multiple attempts. Force two attempts
-    (first 500s, second succeeds) and verify each one waited its own turn on a
-    slow global bucket."""
-
-    call_count = 0
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return httpx.Response(500, content=b"boom")
-        return httpx.Response(200, content=atom_feed([atom_entry()]))
-
-    slow_global = settings.model_copy(
-        update={
-            "reddit_rss_global_rate": 1 / 0.05,
-            "reddit_rss_global_burst": 1,
-            "reddit_rss_retry_base_delay_seconds": 0.001,  # isolate the global bucket's pacing
-        }
-    )
-    client = RedditRssClient(slow_global, transport=httpx.MockTransport(handler))
-    await client.start()
-    try:
-        started = time.monotonic()
-        await client.fetch("/search.rss", {"q": "protest"})
-        elapsed = time.monotonic() - started
-    finally:
-        await client.close()
-
-    assert call_count == 2
-    assert elapsed >= 0
-
-
-async def test_global_bucket_queue_timeout_raises_when_wait_too_long(settings) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=atom_feed([atom_entry()]))
-
-    starved = settings.model_copy(
-        update={
-            "reddit_rss_global_rate": 1 / 60,
-            "reddit_rss_global_burst": 1,
-            "reddit_rss_max_queue_wait_seconds": 0.01,
-        }
-    )
-    client = RedditRssClient(starved, transport=httpx.MockTransport(handler))
-    await client.start()
-    try:
-        await client.fetch("/search.rss", {"q": "protest"})
-        await client.fetch("/search.rss", {"q": "protest"})
-    finally:
-        await client.close()
-
-
 async def test_fetch_oversized_response_raises_unavailable(settings) -> None:
     huge = atom_feed([atom_entry() for _ in range(5)])
 

@@ -1,11 +1,10 @@
 """Keyword/event/profile monitoring via Reddit's public RSS -- this service's
 only Reddit transport. No Reddit credentials of any kind are involved, only
 ``RedditRssService``/``RedditRssClient``. This service's own ``X-API-Key``
-application-level protection still applies (see ``app/main.py`` -- this router
-carries the ``require_api_key`` dependency, plus ``rate_limit_rss_client`` -- a
-per-caller request budget scoped to this router, since it's the one guarding a
-shared, process-wide Reddit RSS acquisition path (see
-``app/reddit/rate_limiter.py`` and ``app/reddit/feed_cache.py``).
+application-level protection still applies (see ``app/main.py``). There is no
+local request quota: outbound fetches wait only when Reddit's own
+``X-Ratelimit-*`` headers say so. Identical feeds share one fetch via
+``app/reddit/feed_cache.py``.
 
 ``POST /monitor`` and ``GET /search`` both call ``RedditRssService.monitor`` --
 there is deliberately one use-case, not duplicated logic per route.

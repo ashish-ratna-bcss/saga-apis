@@ -5,7 +5,7 @@ RSS/Atom feeds** only (`/api/reddit/rss/*`). No Reddit OAuth client, no client
 id/secret, and no official Reddit API calls anywhere in this codebase.
 
 It works from a bare checkout with no `.env`. Optional settings (API keys,
-RSS feed token for a higher rate limit, cache/limiter tuning) are in
+RSS feed token, cache TTL) are in
 [`.env.example`](.env.example).
 
 Consumer-facing contract: [INTEGRATION.md](INTEGRATION.md).  
@@ -17,7 +17,7 @@ Deploy notes: [DEPLOYMENT.md](DEPLOYMENT.md).
 
 - Fetching and parsing Reddit `.rss` / `.atom` feeds
 - Keyword / event / profile monitoring over those feeds
-- Shared-gateway pacing, feed cache coalescing, and per-caller budgets
+- Feed-cache coalescing, and waiting when Reddit's own RSS quota headers say so
 - Stable JSON shapes for callers (SOC Eye or anything else)
 
 ## What it does not own
@@ -78,7 +78,7 @@ Live Reddit smoke tests are skipped unless explicitly enabled (see
 ```
 HTTP  →  reddit_app/api/routes_reddit_rss.py
          reddit_app/services/reddit_rss_service.py
-         reddit_app/reddit/rss_client.py   (+ feed_cache, rate_limiter)
+         reddit_app/reddit/rss_client.py   (+ feed_cache)
          www.reddit.com/*.rss
 ```
 

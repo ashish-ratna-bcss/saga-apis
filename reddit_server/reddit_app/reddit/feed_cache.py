@@ -1,8 +1,7 @@
 """Process-local cache + request-coalescing for raw Reddit RSS feed bytes.
 
 Sits between ``RedditRssService`` and ``RedditRssClient`` in the request path
-(``Service -> FeedCache -> RedditRssClient's rate limiter -> RSS host``, see
-INTEGRATION.md's shared-gateway architecture note). Keyed on the *normalized
+(``Service -> FeedCache -> RedditRssClient -> RSS host``). Keyed on the *normalized
 feed URL* (path + sorted query params) the RSS client would fetch -- **not**
 on the caller's request shape -- so N callers hitting the same feed with
 different ``keywords``/``exclude``/``match_field`` still share one Reddit
@@ -12,12 +11,11 @@ list, or any caller-specific option -- only the already-built ``(path,
 params)`` pair.
 
 One instance lives on ``RedditClientManager`` (``app.state.clients.feed_cache``),
-constructed once per process from ``Settings`` -- same reasoning as
-``rate_limiter.py``: this codebase shares state via dependency injection on an
-existing per-process singleton, not a bare module global.
+constructed once per process from ``Settings``. This codebase shares state via
+dependency injection on an existing per-process singleton, not a bare module global.
 
 Process-local: behind multiple workers/instances this cache (and the
-coalescing it provides) is per-process, same caveat as ``rate_limiter.py``.
+coalescing it provides) is per-process.
 """
 
 from __future__ import annotations

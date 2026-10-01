@@ -45,7 +45,7 @@ All settings are optional. See `.env.example`.
 |---|---|
 | App | `HOST`, `PORT`, `LOG_LEVEL`, `LOG_JSON`, `CORS_ORIGINS`, `API_KEYS` |
 | RSS client | `REDDIT_RSS_USER_AGENT`, `REDDIT_RSS_USER`, `REDDIT_RSS_FEED`, timeouts/retries, `REDDIT_RSS_EVENT_THRESHOLD` |
-| Shared gateway | `REDDIT_RSS_GLOBAL_RATE`, `REDDIT_RSS_GLOBAL_BURST`, `REDDIT_RSS_MAX_QUEUE_WAIT_SECONDS`, cache TTL/size, client limit/window |
+| Shared gateway | `REDDIT_RSS_CACHE_TTL_SECONDS`, `REDDIT_RSS_CACHE_MAX_ENTRIES`, `REDDIT_RSS_GATE_SIZE` |
 
 **Do not** set Reddit OAuth client id/secret — those variables are not used and
 do not exist in this service.
@@ -67,14 +67,13 @@ There is no OAuth token probe — nothing to authenticate with Reddit.
 
 ## Scaling
 
-Feed cache, global token bucket, and per-caller limiter are **process-local**.
+The feed cache is **process-local**. Outbound quota is whatever Reddit returns
+in `X-Ratelimit-*` for this host (and for `REDDIT_RSS_USER` / `REDDIT_RSS_FEED`
+when those are set). This service does not add a tighter cap.
 
-- Prefer **one worker process** per public IP hitting Reddit, or accept that
-  N workers multiply outbound RSS pressure.
-- Horizontal scale for CPU is fine if each instance has its own Reddit-facing
-  IP or you accept aggregate rate-limit risk.
-- Do not run many replicas behind one NAT IP expecting each to get a full
-  ~1 req/min Reddit budget independently without coordination.
+- One worker process is enough for the cache to coalesce identical feeds.
+- Extra workers each keep their own cache and each count against Reddit's quota
+  for the shared public IP.
 
 ---
 

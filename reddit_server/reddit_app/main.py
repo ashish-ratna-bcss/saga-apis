@@ -38,7 +38,6 @@ from reddit_app.api.routes_reddit_rss import router as reddit_rss_router
 from reddit_app.core.config import Settings, get_settings
 from reddit_app.core.exceptions import RedditServiceError
 from reddit_app.core.logging import configure_logging, get_logger, register_secret
-from reddit_app.core.rate_limit import ClientRateLimiter
 from reddit_app.reddit.tenant_queue import tenant_key_var
 from reddit_app.core.security import register_api_key_secrets, require_api_key
 from reddit_app.reddit.client import RedditClientManager
@@ -138,10 +137,10 @@ def create_app(
                 "description": (
                     "Keyword/event/profile monitoring via Reddit's public RSS/Atom feeds. "
                     "authenticated=false in every response — this service has no Reddit "
-                    "credentials. Still governed by X-API-Key (when API_KEYS is set) and a "
-                    "per-caller request budget. Shared short-TTL feed cache coalesces "
-                    "identical fetches; filtering is per call. No polling loop or "
-                    "cross-request deduplication."
+                    "credentials. Outbound quota is Reddit's own X-Ratelimit-* headers; "
+                    "this service does not add a tighter cap. Shared short-TTL feed cache "
+                    "coalesces identical fetches; filtering is per call. No polling loop "
+                    "or cross-request deduplication."
                 ),
             },
         ],
@@ -151,11 +150,6 @@ def create_app(
 
     app.state.settings = settings
     app.state.clients = clients
-    app.state.rss_client_limiter = ClientRateLimiter(
-        max_requests=settings.reddit_rss_client_limit,
-        window_seconds=settings.reddit_rss_client_window_seconds,
-        max_tracked_clients=settings.reddit_rss_client_limit_max_tracked_clients,
-    )
 
     if settings.cors_origin_list:
         app.add_middleware(

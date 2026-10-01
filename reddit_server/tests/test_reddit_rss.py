@@ -362,35 +362,13 @@ def test_rss_different_feeds_each_get_their_own_fetch(
     assert len(fake_reddit_rss.calls_to("/search.rss")) == 2
 
 
-def test_rss_client_limiter_returns_429_with_retry_after(fake_reddit_rss: FakeRedditRss) -> None:
-    settings = Settings(
-        _env_file=None,
-        reddit_rss_client_limit=3,
-        reddit_rss_client_window_seconds=60.0,
-    )
+def test_rss_does_not_reject_callers_with_a_local_quota(fake_reddit_rss: FakeRedditRss) -> None:
+    settings = Settings(_env_file=None)
     app = create_app(settings, rss_transport=fake_reddit_rss.transport())
     with TestClient(app) as client:
-        for _ in range(3):
+        for _ in range(8):
             response = client.post("/api/reddit/rss/monitor", json={"query": "protest"})
             assert response.status_code == 200
-        blocked = client.post("/api/reddit/rss/monitor", json={"query": "protest"})
-
-    assert blocked.status_code == 200
-
-
-def test_rss_client_limiter_isolates_different_callers(fake_reddit_rss: FakeRedditRss) -> None:
-    settings = Settings(
-        _env_file=None,
-        reddit_rss_client_limit=1,
-        reddit_rss_client_window_seconds=60.0,
-    )
-    app = create_app(settings, rss_transport=fake_reddit_rss.transport())
-    client_a = TestClient(app, client=("1.2.3.4", 12345))
-    client_b = TestClient(app, client=("5.6.7.8", 54321))
-
-    assert client_a.post("/api/reddit/rss/monitor", json={"query": "protest"}).status_code == 200
-    assert client_a.post("/api/reddit/rss/monitor", json={"query": "protest"}).status_code == 200
-    assert client_b.post("/api/reddit/rss/monitor", json={"query": "protest"}).status_code == 200
 
 
 def test_rss_strong_keywords_force_signal_regardless_of_min_matches(app_client) -> None:

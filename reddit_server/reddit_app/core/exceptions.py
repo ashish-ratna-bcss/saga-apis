@@ -125,38 +125,3 @@ class RedditRssInvalidUsernameError(RedditRssError):
     code = "REDDIT_RSS_INVALID_USERNAME"
     http_status = 422
 
-
-class RedditRssQueueTimeoutError(RedditRssError):
-    """Waiting for the shared process-wide Reddit RSS budget (see
-    app/reddit/rate_limiter.py) would have taken longer than
-    reddit_rss_max_queue_wait_seconds. Distinct from RedditRssTimeoutError,
-    which means Reddit itself didn't respond in time -- this means the request
-    never even got as far as Reddit."""
-
-    code = "REDDIT_RSS_QUEUE_TIMEOUT"
-    http_status = 504
-
-
-class RedditRssClientRateLimitedError(RedditRssError):
-    """A single caller exceeded its own request budget against this service's
-    RSS endpoints (see app/core/rate_limit.py) -- distinct from
-    RedditRssRateLimitedError, which means *Reddit* rate limited this service,
-    not this service rate limiting the caller."""
-
-    code = "REDDIT_RSS_CLIENT_RATE_LIMITED"
-    http_status = 429
-
-    def __init__(
-        self,
-        message: str = "Too many requests to the Reddit RSS endpoints",
-        *,
-        retry_after: float | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.retry_after = retry_after
-
-    def to_payload(self) -> dict[str, Any]:
-        payload = super().to_payload()
-        if self.retry_after is not None:
-            payload["error"]["retry_after"] = self.retry_after
-        return payload
